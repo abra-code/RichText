@@ -44,7 +44,9 @@ including the table.
 ## Code
 
 ```swift
+// Greet someone by name.
 func greet(_ name: String) -> String {
+    let count = 42
     return "Hello, \\(name)!"
 }
 ```

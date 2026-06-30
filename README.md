@@ -44,7 +44,7 @@ drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` f
   `RichTextMarkdownSerializer` writes Markdown - so copy carries a real table even on iOS, where TextKit
   cannot render one. `RichTextPasteboard` puts all representations on the pasteboard at once.
 
-## Implementation status (phases P0-P4 of the design plan)
+## Implementation status (phases P0-P5 of the design plan)
 
 - **P0/P1 - decorations: DONE.** Code-block rounded background, block-quote bar, thematic-break hairline,
   inline-code background, headings, lists (hanging indents, nesting), links - cross-platform.
@@ -56,6 +56,11 @@ drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` f
   `NSTextTable` (proven); iOS keeps T1 (single-line). Under `.textKit2`, both platforms use the drawn-grid
   T1 path (single-line). Unifying everyone to wrapping cells is the remaining work - a custom
   `NSTextLayoutFragment` that lays out each cell's sub-text (the design doc's Strategy T2).
+- **P5 - polish: syntax highlighting DONE; rest pending.** Fenced code blocks are colored by a small,
+  dependency-free generic lexer (`RichTextSyntaxHighlighter`) that recognizes comments, strings, numbers,
+  and a per-language keyword set selected by the block's info string; output is plain `.foregroundColor`
+  runs (system colors, so dark mode adapts), rendered identically by both engines. Toggle via
+  `RichTextTheme.syntaxHighlighting`. Images / attachments, accessibility, and RTL remain.
 
 ## Rendering engines (TextKit 1 vs TextKit 2)
 

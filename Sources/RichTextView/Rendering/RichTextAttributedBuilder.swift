@@ -72,8 +72,8 @@ final class RichTextAttributedBuilder {
             let body = renderInlines(inlines, base: bodyFont, bold: false, italic: false, strike: false, link: nil, color: color)
             emit(body, style: blockStyle(indent: indent), quoteBarX: quoteBarX)
 
-        case .codeBlock(_, let code):
-            appendCodeBlock(code, indent: indent, quoteBarX: quoteBarX)
+        case .codeBlock(let language, let code):
+            appendCodeBlock(code, language: language, indent: indent, quoteBarX: quoteBarX)
 
         case .blockQuote(let inner):
             let barX = indent + theme.indentStep - 12
@@ -90,14 +90,19 @@ final class RichTextAttributedBuilder {
         }
     }
 
-    private func appendCodeBlock(_ code: String, indent: CGFloat, quoteBarX: CGFloat?) {
+    private func appendCodeBlock(_ code: String, language: String?, indent: CGFloat, quoteBarX: CGFloat?) {
+        // Line breaks become U+2028 so the whole block is ONE paragraph (one layout fragment). That is a
+        // 1:1 UTF-16 substitution, so syntax tokens computed from `code` apply at the same offsets.
         let joined = code.components(separatedBy: "\n").joined(separator: "\u{2028}")
         let style = blockStyle(indent: indent)
         style.firstLineHeadIndent = indent + 10
         style.headIndent = indent + 10
         style.tailIndent = -10
         style.paragraphSpacingBefore = 2
-        let body = NSAttributedString(string: joined, attributes: [.font: monoFont, .foregroundColor: RTVColors.label])
+        let body = NSMutableAttributedString(string: joined, attributes: [.font: monoFont, .foregroundColor: RTVColors.label])
+        if theme.syntaxHighlighting {
+            RichTextSyntaxHighlighter.apply(to: body, code: code, language: language)
+        }
         emit(body, style: style, quoteBarX: quoteBarX, markers: [.rtvCodeBlock: true])
     }
 
