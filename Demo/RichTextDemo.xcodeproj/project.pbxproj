@@ -7,14 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		178A465E707388FA4A8FF5F1 /* RichTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 53152AFB554D934C23AE5BC9 /* RichTextView */; };
 		8BF88BC3469096204F798115 /* RichTextView in Frameworks */ = {isa = PBXBuildFile; productRef = E6F55C4430B172382778B987 /* RichTextView */; };
+		BD757AC86CDCC2CCBB495600 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B063D94BAF1EC2ED13F5AC /* main.swift */; };
 		D2A82427300BBE3279A8EA05 /* RichTextDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC93D8A016AFCCCB866F48A /* RichTextDemoApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		3AD1789B2DDB023F158DD59B /* RichTextView */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RichTextView; path = ..; sourceTree = SOURCE_ROOT; };
 		8EC93D8A016AFCCCB866F48A /* RichTextDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextDemoApp.swift; sourceTree = "<group>"; };
+		90B063D94BAF1EC2ED13F5AC /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B99E452FF39E964756E6D84F /* RichTextDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RichTextDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA5E155EC109A0C4E32B5457 /* RichTextAppKitDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RichTextAppKitDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -26,12 +30,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D01D2F516EFF44374499F7D9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				178A465E707388FA4A8FF5F1 /* RichTextView in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		67D8F6FB244A629D0705852D /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				DA5E155EC109A0C4E32B5457 /* RichTextAppKitDemo.app */,
 				B99E452FF39E964756E6D84F /* RichTextDemo.app */,
 			);
 			name = Products;
@@ -40,6 +53,7 @@
 		69F0B17310813D896B958B8C = {
 			isa = PBXGroup;
 			children = (
+				D7E3CBE160422EC22E5D4500 /* AppKitSources */,
 				D151CFA0F1B5E801795A2723 /* Packages */,
 				DAFF2143D0C25FB5E1F25E81 /* Sources */,
 				67D8F6FB244A629D0705852D /* Products */,
@@ -54,6 +68,14 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		D7E3CBE160422EC22E5D4500 /* AppKitSources */ = {
+			isa = PBXGroup;
+			children = (
+				90B063D94BAF1EC2ED13F5AC /* main.swift */,
+			);
+			path = AppKitSources;
+			sourceTree = "<group>";
+		};
 		DAFF2143D0C25FB5E1F25E81 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -65,6 +87,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		D5DCCD70C73A5C311BD1F2B1 /* RichTextAppKitDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B838B3643E5E662FDA665D32 /* Build configuration list for PBXNativeTarget "RichTextAppKitDemo" */;
+			buildPhases = (
+				550863D2A85797DB6C433CB2 /* Sources */,
+				D01D2F516EFF44374499F7D9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RichTextAppKitDemo;
+			packageProductDependencies = (
+				53152AFB554D934C23AE5BC9 /* RichTextView */,
+			);
+			productName = RichTextAppKitDemo;
+			productReference = DA5E155EC109A0C4E32B5457 /* RichTextAppKitDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
 		E1D7E3C3C421533EF2DA284A /* RichTextDemo */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8779C201EA23CEC0AF8DAEEA /* Build configuration list for PBXNativeTarget "RichTextDemo" */;
@@ -112,12 +153,21 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				D5DCCD70C73A5C311BD1F2B1 /* RichTextAppKitDemo */,
 				E1D7E3C3C421533EF2DA284A /* RichTextDemo */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		550863D2A85797DB6C433CB2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BD757AC86CDCC2CCBB495600 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8A80F628E0D2CC7020858EED /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -218,6 +268,31 @@
 			};
 			name = Debug;
 		};
+		542D254BF2AC0B3A063540D8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.richtext.appkit;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "";
+			};
+			name = Release;
+		};
 		961F42023C08ACE4B87B37A5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -300,6 +375,31 @@
 			};
 			name = Release;
 		};
+		FFE8453028824464D6BDB816 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.richtext.appkit;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -308,6 +408,15 @@
 			buildConfigurations = (
 				20A7D0C634EC75B7BC8A174B /* Debug */,
 				961F42023C08ACE4B87B37A5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B838B3643E5E662FDA665D32 /* Build configuration list for PBXNativeTarget "RichTextAppKitDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FFE8453028824464D6BDB816 /* Debug */,
+				542D254BF2AC0B3A063540D8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -331,6 +440,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		53152AFB554D934C23AE5BC9 /* RichTextView */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RichTextView;
+		};
 		E6F55C4430B172382778B987 /* RichTextView */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RichTextView;

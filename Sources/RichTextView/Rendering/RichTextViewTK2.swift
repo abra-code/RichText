@@ -19,7 +19,8 @@ import UIKit
 // (created via the usingTextLayoutManager: initializer) and only attach the provider - hand-building the
 // stack and handing NSTextView a container is associated with broken / asserting selection on macOS.
 final class TextKit2Coordinator {
-    let provider: RichTextFragmentProvider
+    let provider: RichTextFragmentProvider   // the iOS path uses this directly as the layout-manager delegate
+    var owner: AnyObject?                     // the macOS path retains the shared factory's delegate here
 
     init(metrics: RichTextDecorationMetrics) {
         provider = RichTextFragmentProvider(metrics: metrics)
@@ -47,33 +48,18 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         TextKit2Coordinator(metrics: metrics)
     }
 
+    // Builds the text view through the shared AppKit factory (RichTextAppKit) so the SwiftUI host and a
+    // plain AppKit host exercise identical setup. The factory's text view is a SelectableTextView, which
+    // clears the SwiftUI-installed gesture delay so click-drag selection / link clicks reach TextKit 2.
     func makeNSView(context: Context) -> NSTextView {
-        // usingTextLayoutManager: true gives a TextKit 2 text view that owns its stack and drives its own
-        // selection / viewport. Attach the fragment provider before content so the custom fragments are
-        // used the first time layout runs. Content is set on the content storage (a TextKit 2 accessor) to
-        // avoid the TextKit 1 bridges (.textStorage / .layoutManager) that would downgrade the view.
-        let textView = NSTextView(usingTextLayoutManager: true)
-        textView.textLayoutManager?.delegate = context.coordinator.provider
-        setContent(attributed, on: textView)
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = false
-        textView.textContainerInset = .zero
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = true
-        textView.linkTextAttributes = [
-            .foregroundColor: NSColor.linkColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue,
-            .cursor: NSCursor.pointingHand,
-        ]
+        let (textView, owner) = RichTextAppKit.makeTextKit2View(attributed: attributed, metrics: metrics)
+        context.coordinator.owner = owner
         return textView
     }
 
     func updateNSView(_ textView: NSTextView, context: Context) {
-        if contentStorage(of: textView)?.attributedString?.isEqual(to: attributed) == false {
-            setContent(attributed, on: textView)
+        if RichTextAppKit.currentContent(of: textView)?.isEqual(to: attributed) == false {
+            RichTextAppKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
         }
     }
@@ -86,13 +72,19 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         }
         return CGSize(width: width, height: ceil(measuredHeight(layoutManager)))
     }
+}
 
-    private func contentStorage(of textView: NSTextView) -> NSTextContentStorage? {
-        return textView.textLayoutManager?.textContentManager as? NSTextContentStorage
-    }
-
-    private func setContent(_ attributed: NSAttributedString, on textView: NSTextView) {
-        contentStorage(of: textView)?.attributedString = attributed
+// When an NSView is embedded in SwiftUI via NSViewRepresentable, SwiftUI installs its own pan / click
+// gesture recognizers on it with delaysPrimaryMouseButtonEvents = true. The pan recognizer buffers
+// mouse-down / drag while it decides whether it owns the gesture, so primary mouse events reach the text
+// view late and batched. A TextKit 2 NSTextView (which selects via normal event delivery) then never gets
+// a real-time drag stream and click-drag selection silently fails - even though the caret cursor still
+// shows on hover. Clearing the delay on each recognizer as it is attached restores selection. (TextKit 1
+// is unaffected: its mouseDown enters a modal event-tracking loop that pulls events directly.)
+final class SelectableTextView: NSTextView {
+    override func addGestureRecognizer(_ gestureRecognizer: NSGestureRecognizer) {
+        gestureRecognizer.delaysPrimaryMouseButtonEvents = false
+        super.addGestureRecognizer(gestureRecognizer)
     }
 }
 
