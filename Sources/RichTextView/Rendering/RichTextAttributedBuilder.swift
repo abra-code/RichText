@@ -1,0 +1,356 @@
+// Sources/RichTextView/Rendering/RichTextAttributedBuilder.swift
+//
+// Builds ONE NSAttributedString for a whole document so it renders in a single selectable text view.
+// Inline styling uses font traits + run attributes; block structure uses paragraph styles plus the
+// draw-only MARKER attributes (RichTextAttributes.swift) that the custom layout manager paints
+// (code-block rectangle, quote bar, hairline, table grid). Tables are laid out here as tab-stop rows
+// with measured, content-sized columns (T1); the grid is drawn by the layout manager.
+
+import Foundation
+
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
+
+public enum RichTextAttributedString {
+    /// The whole document as one attributed string.
+    public static func make(_ document: RichTextDocument, theme: RichTextTheme = .default) -> NSAttributedString {
+        let builder = RichTextAttributedBuilder(theme: theme)
+        return builder.build(document.blocks)
+    }
+}
+
+final class RichTextAttributedBuilder {
+    private let storage = NSMutableAttributedString()
+    private let theme: RichTextTheme
+
+    private let bodyFont: RTVFont
+    private let baseSize: CGFloat
+    private let monoFont: RTVFont
+
+    init(theme: RichTextTheme) {
+        self.theme = theme
+        self.bodyFont = RTVFonts.body(theme.baseFontSize)
+        self.baseSize = bodyFont.pointSize
+        self.monoFont = RTVFonts.monospaced(bodyFont.pointSize * 0.94)
+    }
+
+    func build(_ blocks: [RichTextBlock]) -> NSAttributedString {
+        appendBlocks(blocks, indent: 0, color: RTVColors.label, quoteBarX: nil)
+        if storage.string.hasSuffix("\n") {
+            storage.deleteCharacters(in: NSRange(location: storage.length - 1, length: 1))
+        }
+        return storage
+    }
+
+    // MARK: - Blocks
+
+    private func appendBlocks(_ blocks: [RichTextBlock], indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        for block in blocks {
+            appendBlock(block, indent: indent, color: color, quoteBarX: quoteBarX)
+        }
+    }
+
+    private func appendBlock(_ block: RichTextBlock, indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        switch block {
+        case .heading(let level, let inlines):
+            let font = RTVFonts.withTraits(RTVFonts.heading(level), bold: true, italic: false)
+            let body = renderInlines(inlines, base: font, bold: true, italic: false, strike: false, link: nil, color: color)
+            let style = blockStyle(indent: indent)
+            style.paragraphSpacingBefore = theme.blockSpacing * 0.6
+            style.paragraphSpacing = theme.blockSpacing * 0.5
+            emit(body, style: style, quoteBarX: quoteBarX)
+
+        case .paragraph(let inlines):
+            let body = renderInlines(inlines, base: bodyFont, bold: false, italic: false, strike: false, link: nil, color: color)
+            emit(body, style: blockStyle(indent: indent), quoteBarX: quoteBarX)
+
+        case .codeBlock(_, let code):
+            appendCodeBlock(code, indent: indent, quoteBarX: quoteBarX)
+
+        case .blockQuote(let inner):
+            let barX = indent + theme.indentStep - 12
+            appendBlocks(inner, indent: indent + theme.indentStep, color: RTVColors.secondary, quoteBarX: barX)
+
+        case .list(let ordered, let start, _, let items):
+            appendList(ordered: ordered, start: start, items: items, indent: indent, color: color, quoteBarX: quoteBarX)
+
+        case .thematicBreak:
+            appendThematicBreak(indent: indent, quoteBarX: quoteBarX)
+
+        case .table(let headers, let alignments, let rows):
+            appendTable(headers: headers, alignments: alignments, rows: rows, indent: indent, color: color, quoteBarX: quoteBarX)
+        }
+    }
+
+    private func appendCodeBlock(_ code: String, indent: CGFloat, quoteBarX: CGFloat?) {
+        let joined = code.components(separatedBy: "\n").joined(separator: "\u{2028}")
+        let style = blockStyle(indent: indent)
+        style.firstLineHeadIndent = indent + 10
+        style.headIndent = indent + 10
+        style.tailIndent = -10
+        style.paragraphSpacingBefore = 2
+        let body = NSAttributedString(string: joined, attributes: [.font: monoFont, .foregroundColor: RTVColors.label])
+        emit(body, style: style, quoteBarX: quoteBarX, markers: [.rtvCodeBlock: true])
+    }
+
+    private func appendThematicBreak(indent: CGFloat, quoteBarX: CGFloat?) {
+        let style = blockStyle(indent: indent)
+        style.paragraphSpacingBefore = theme.blockSpacing
+        style.minimumLineHeight = 11
+        style.maximumLineHeight = 11
+        let body = NSAttributedString(string: " ", attributes: [.font: RTVFont.systemFont(ofSize: 1)])
+        emit(body, style: style, quoteBarX: quoteBarX, markers: [.rtvRule: true])
+    }
+
+    // MARK: - Lists
+
+    private func appendList(ordered: Bool, start: Int, items: [[RichTextBlock]], indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        for (offset, itemBlocks) in items.enumerated() {
+            let marker = ordered ? "\(start + offset)." : "\u{2022}"
+            appendListItem(itemBlocks, marker: marker, indent: indent, color: color, quoteBarX: quoteBarX)
+        }
+    }
+
+    private func appendListItem(_ blocks: [RichTextBlock], marker: String, indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        var markerUsed = false
+        for block in blocks {
+            switch block {
+            case .paragraph(let inlines) where !markerUsed:
+                markerUsed = true
+                appendListLine(marker: marker, inlines: inlines, indent: indent, color: color, quoteBarX: quoteBarX)
+            case .list(let ordered, let start, _, let nested):
+                appendList(ordered: ordered, start: start, items: nested, indent: indent + theme.indentStep, color: color, quoteBarX: quoteBarX)
+            default:
+                appendBlock(block, indent: indent + theme.indentStep, color: color, quoteBarX: quoteBarX)
+            }
+        }
+        if !markerUsed {
+            appendListLine(marker: marker, inlines: [], indent: indent, color: color, quoteBarX: quoteBarX)
+        }
+    }
+
+    private func appendListLine(marker: String, inlines: [RichTextInline], indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        let contentIndent = indent + theme.indentStep
+        let line = NSMutableAttributedString(string: marker + "\t",
+                                             attributes: [.font: bodyFont, .foregroundColor: RTVColors.secondary])
+        line.append(renderInlines(inlines, base: bodyFont, bold: false, italic: false, strike: false, link: nil, color: color))
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = indent
+        style.headIndent = contentIndent
+        style.tabStops = [NSTextTab(textAlignment: .left, location: contentIndent)]
+        style.paragraphSpacing = theme.listSpacing
+        emit(line, style: style, quoteBarX: quoteBarX)
+    }
+
+    // MARK: - Tables
+
+    // Platform split (design doc section 10, "renderer diverges"): macOS uses a native NSTextTable for
+    // wrapping-cell fidelity (P4); iOS / visionOS use the T1 tab-stop + drawn-grid path (P2, single-line
+    // cells), since NSTextTable is AppKit-only. Copy is table-aware on both via the RTF serializer.
+    // Unifying iOS to wrapping cells is the remaining P4 work (a TextKit 2 custom layout fragment).
+    private func appendTable(headers: [[RichTextInline]], alignments: [RichTextColumnAlignment],
+                             rows: [[[RichTextInline]]], indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        #if canImport(AppKit)
+        appendTableNative(headers: headers, alignments: alignments, rows: rows, color: color)
+        #else
+        appendTableT1(headers: headers, alignments: alignments, rows: rows, indent: indent, color: color, quoteBarX: quoteBarX)
+        #endif
+    }
+
+    #if canImport(AppKit)
+    // Native bordered NSTextTable (macOS): proportional content-sized columns, WRAPPING cells, real cell
+    // borders, per-column alignment, a tinted header row - all selectable as part of the one text view.
+    private func appendTableNative(headers: [[RichTextInline]], alignments: [RichTextColumnAlignment],
+                                   rows: [[[RichTextInline]]], color: RTVColor) {
+        let columns = max(headers.count, rows.map(\.count).max() ?? 0)
+        if columns == 0 {
+            return
+        }
+        let table = NSTextTable()
+        table.numberOfColumns = columns
+        table.layoutAlgorithm = .automaticLayoutAlgorithm
+        table.collapsesBorders = true
+
+        let bodyRows: [([[RichTextInline]], Bool)] = [(headers, true)] + rows.map { ($0, false) }
+        for (rowIndex, entry) in bodyRows.enumerated() {
+            let cells = entry.0
+            let header = entry.1
+            for column in 0..<columns {
+                let block = NSTextTableBlock(table: table, startingRow: rowIndex, rowSpan: 1,
+                                             startingColumn: column, columnSpan: 1)
+                block.setBorderColor(RTVColors.separator)
+                block.setWidth(1, type: .absoluteValueType, for: .border)
+                block.setWidth(5, type: .absoluteValueType, for: .padding)
+                if header {
+                    block.backgroundColor = RTVColors.codeFill
+                }
+                let style = NSMutableParagraphStyle()
+                style.textBlocks = [block]
+                let alignment = column < alignments.count ? alignments[column] : .none
+                switch alignment {
+                case .center: style.alignment = .center
+                case .right: style.alignment = .right
+                default: style.alignment = .left
+                }
+                let inlines = column < cells.count ? cells[column] : []
+                let content = renderInlines(inlines, base: bodyFont, bold: header, italic: false, strike: false, link: nil, color: color)
+                let cell = NSMutableAttributedString(attributedString: content)
+                cell.append(NSAttributedString(string: "\n"))
+                cell.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: cell.length))
+                storage.append(cell)
+            }
+        }
+    }
+    #endif
+
+    // T1 (tab-stop rows, measured content-sized columns, grid drawn by the layout manager).
+    private func appendTableT1(headers: [[RichTextInline]], alignments: [RichTextColumnAlignment],
+                               rows: [[[RichTextInline]]], indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        let columns = max(headers.count, rows.map(\.count).max() ?? 0)
+        if columns == 0 {
+            return
+        }
+        let allRows: [([[RichTextInline]], Bool)] = [(headers, true)] + rows.map { ($0, false) }
+
+        // Render + measure cells.
+        let cells: [[NSAttributedString]] = allRows.map { rowPair in
+            (0..<columns).map { column in
+                let inlines = column < rowPair.0.count ? rowPair.0[column] : []
+                return renderInlines(inlines, base: bodyFont, bold: rowPair.1, italic: false, strike: false, link: nil, color: color)
+            }
+        }
+        var columnWidth = [CGFloat](repeating: 0, count: columns)
+        for row in cells {
+            for (column, cell) in row.enumerated() {
+                columnWidth[column] = max(columnWidth[column], ceil(cell.size().width))
+            }
+        }
+
+        // Column edges (absolute x). edges has columns+1 entries: left of col0 .. right of last col.
+        var edges: [CGFloat] = [indent]
+        var x = indent
+        for column in 0..<columns {
+            x += theme.cellPadding * 2 + columnWidth[column]
+            edges.append(x)
+        }
+
+        func alignment(_ column: Int) -> RichTextColumnAlignment {
+            return column < alignments.count ? alignments[column] : .none
+        }
+        func tab(_ column: Int) -> NSTextTab {
+            switch alignment(column) {
+            case .right:
+                return NSTextTab(textAlignment: .right, location: edges[column + 1] - theme.cellPadding)
+            case .center:
+                return NSTextTab(textAlignment: .center, location: (edges[column] + edges[column + 1]) / 2)
+            default:
+                return NSTextTab(textAlignment: .left, location: edges[column] + theme.cellPadding)
+            }
+        }
+        let tabStops = (0..<columns).map(tab)
+
+        for (rowIndex, cellRow) in cells.enumerated() {
+            let line = NSMutableAttributedString()
+            for column in 0..<columns {
+                line.append(NSAttributedString(string: "\t"))
+                line.append(cellRow[column])
+            }
+            line.append(NSAttributedString(string: "\n"))
+
+            let style = NSMutableParagraphStyle()
+            style.firstLineHeadIndent = 0
+            style.headIndent = 0
+            style.tabStops = tabStops
+            style.defaultTabInterval = 0
+            style.paragraphSpacing = rowIndex == cells.count - 1 ? theme.blockSpacing : 0
+
+            let info = RichTextTableRowInfo(columnEdges: edges, header: allRows[rowIndex].1,
+                                            firstRow: rowIndex == 0, lastRow: rowIndex == cells.count - 1)
+            let range = NSRange(location: 0, length: line.length)
+            line.addAttribute(.paragraphStyle, value: style, range: range)
+            line.addAttribute(.rtvTableRow, value: info, range: range)
+            if let quoteBarX {
+                line.addAttribute(.rtvQuoteBar, value: quoteBarX, range: range)
+            }
+            storage.append(line)
+        }
+    }
+
+    // MARK: - Inline
+
+    private func renderInlines(_ nodes: [RichTextInline], base: RTVFont, bold: Bool, italic: Bool,
+                              strike: Bool, link: URL?, color: RTVColor) -> NSAttributedString {
+        let out = NSMutableAttributedString()
+        for node in nodes {
+            switch node {
+            case .text(let s):
+                out.append(run(s, font: RTVFonts.withTraits(base, bold: bold, italic: italic), strike: strike, link: link, color: color))
+            case .lineBreak:
+                out.append(run("\u{2028}", font: base, strike: strike, link: link, color: color))
+            case .code(let s):
+                out.append(codeRun(s, strike: strike, link: link, color: color))
+            case .emphasis(let children):
+                out.append(renderInlines(children, base: base, bold: bold, italic: true, strike: strike, link: link, color: color))
+            case .strong(let children):
+                out.append(renderInlines(children, base: base, bold: true, italic: italic, strike: strike, link: link, color: color))
+            case .strikethrough(let children):
+                out.append(renderInlines(children, base: base, bold: bold, italic: italic, strike: true, link: link, color: color))
+            case .link(let children, let url):
+                out.append(renderInlines(children, base: base, bold: bold, italic: italic, strike: strike, link: URL(string: url) ?? link, color: color))
+            }
+        }
+        return out
+    }
+
+    private func run(_ s: String, font: RTVFont, strike: Bool, link: URL?, color: RTVColor) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: link == nil ? color : RTVColors.link]
+        if strike {
+            attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+        }
+        if let link {
+            attributes[.link] = link
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        return NSAttributedString(string: s, attributes: attributes)
+    }
+
+    private func codeRun(_ s: String, strike: Bool, link: URL?, color: RTVColor) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: monoFont, .foregroundColor: link == nil ? color : RTVColors.link, .backgroundColor: RTVColors.codeFill,
+        ]
+        if strike {
+            attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+        }
+        if let link {
+            attributes[.link] = link
+        }
+        return NSAttributedString(string: s, attributes: attributes)
+    }
+
+    // MARK: - Helpers
+
+    private func emit(_ body: NSAttributedString, style: NSParagraphStyle, quoteBarX: CGFloat?, markers: [NSAttributedString.Key: Any] = [:]) {
+        let paragraph = NSMutableAttributedString(attributedString: body)
+        paragraph.append(NSAttributedString(string: "\n"))
+        let range = NSRange(location: 0, length: paragraph.length)
+        paragraph.addAttribute(.paragraphStyle, value: style, range: range)
+        for (key, value) in markers {
+            paragraph.addAttribute(key, value: value, range: range)
+        }
+        if let quoteBarX {
+            paragraph.addAttribute(.rtvQuoteBar, value: quoteBarX, range: range)
+        }
+        storage.append(paragraph)
+    }
+
+    private func blockStyle(indent: CGFloat) -> NSMutableParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = indent
+        style.headIndent = indent
+        style.paragraphSpacing = theme.blockSpacing
+        return style
+    }
+}

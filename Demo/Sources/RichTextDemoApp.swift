@@ -1,0 +1,88 @@
+// Demo/Sources/RichTextDemoApp.swift
+//
+// A minimal multiplatform app to verify RichTextView on iOS and macOS: it renders a rich sample
+// document in one selectable text view, and offers "Copy as rich text" (RichTextPasteboard) so the
+// table-aware RTF / HTML / Markdown copy can be pasted into TextEdit / Notes / a browser.
+
+import SwiftUI
+import RichTextView
+
+@main
+struct RichTextDemoApp: App {
+    var body: some Scene {
+        WindowGroup {
+            DemoView()
+        }
+    }
+}
+
+private let sampleMarkdown = """
+# RichTextView
+
+A whole document rendered in **one** selectable text view - select and copy across *everything*,
+including the table.
+
+## Inline
+
+`inline code`, **bold**, *italic*, ~~strikethrough~~, and a [link](https://www.swift.org).
+
+## Lists
+
+- first item
+- second item with `code`
+- nested:
+  - sub one
+  - sub two
+
+1. ordered one
+2. ordered two
+
+## Quote
+
+> A block quote, with a bar in the gutter and a **bold** word.
+
+## Code
+
+```swift
+func greet(_ name: String) -> String {
+    return "Hello, \\(name)!"
+}
+```
+
+## Table
+
+| Feature  | Status | Notes                |
+| -------- | :----: | -------------------- |
+| Headings |   ok   | scaled, bold         |
+| Code     |   ok   | rounded background   |
+| Tables   |   ok   | drawn grid, T1       |
+
+---
+
+That is all.
+"""
+
+struct DemoView: View {
+    private let document = RichTextDocument(markdown: sampleMarkdown)
+
+    var body: some View {
+        ScrollView {
+            RichTextView(document)
+                .padding()
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                RichTextPasteboard.write(document)
+            } label: {
+                Label("Copy as rich text", systemImage: "doc.on.clipboard")
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding()
+            .background(.regularMaterial)
+        }
+    }
+}

@@ -1,0 +1,575 @@
+// Sources/RichTextView/Markdown/RichTextMarkdownParser.swift
+//
+// A small, dependency-free Markdown parser - one convenient way to build a RichTextDocument. It is a
+// line-based block parser plus a recursive inline parser covering the subset a chat / document surface
+// uses: ATX headings, paragraphs, fenced code, block quotes, ordered / unordered / nested lists,
+// thematic breaks, GFM tables; inline **strong**, *emphasis*, ***both***, ~~strike~~, `code`,
+// [links](url), escapes, hard breaks.
+//
+// The parser is TOTAL: malformed or INCOMPLETE input never throws and never loses text (an unterminated
+// `**bold` renders as literal "**bold" until it closes). That property is what makes STREAMING safe.
+
+import Foundation
+
+public extension RichTextDocument {
+    /// Builds a document by parsing a Markdown string.
+    init(markdown: String) {
+        self.init(blocks: RichTextMarkdownParser.parse(markdown))
+    }
+}
+
+public enum RichTextMarkdownParser {
+
+    public static func parse(_ source: String) -> [RichTextBlock] {
+        let normalized = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        return parseBlocks(normalized.components(separatedBy: "\n"))
+    }
+
+    static func parseBlocks(_ lines: [String]) -> [RichTextBlock] {
+        var blocks: [RichTextBlock] = []
+        var i = 0
+        while i < lines.count {
+            let line = lines[i]
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                i += 1
+                continue
+            }
+            if let fence = parseFence(lines, &i) {
+                blocks.append(fence)
+                continue
+            }
+            if isThematicBreak(line) {
+                blocks.append(.thematicBreak)
+                i += 1
+                continue
+            }
+            if let heading = parseHeading(line) {
+                blocks.append(heading)
+                i += 1
+                continue
+            }
+            if isBlockQuote(line) {
+                blocks.append(parseBlockQuote(lines, &i))
+                continue
+            }
+            if let table = parseTable(lines, &i) {
+                blocks.append(table)
+                continue
+            }
+            if listItemMatch(line) != nil {
+                blocks.append(parseList(lines, &i))
+                continue
+            }
+            blocks.append(parseParagraph(lines, &i))
+        }
+        return blocks
+    }
+
+    // MARK: Fenced code
+
+    private static func isFenceStartLine(_ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        return t.hasPrefix("```") || t.hasPrefix("~~~")
+    }
+
+    private static func parseFence(_ lines: [String], _ i: inout Int) -> RichTextBlock? {
+        let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+        let fenceChar: Character
+        if trimmed.hasPrefix("```") {
+            fenceChar = "`"
+        } else if trimmed.hasPrefix("~~~") {
+            fenceChar = "~"
+        } else {
+            return nil
+        }
+        let openLength = trimmed.prefix(while: { $0 == fenceChar }).count
+        if openLength < 3 {
+            return nil
+        }
+        let info = String(trimmed.drop(while: { $0 == fenceChar })).trimmingCharacters(in: .whitespaces)
+        let language = info.isEmpty ? nil : info.components(separatedBy: .whitespaces).first
+
+        var codeLines: [String] = []
+        var j = i + 1
+        while j < lines.count {
+            let candidate = lines[j].trimmingCharacters(in: .whitespaces)
+            let isClose = !candidate.isEmpty
+                && candidate.allSatisfy({ $0 == fenceChar })
+                && candidate.count >= openLength
+            if isClose {
+                j += 1
+                break
+            }
+            codeLines.append(lines[j])
+            j += 1
+        }
+        i = j
+        return .codeBlock(language: language, code: codeLines.joined(separator: "\n"))
+    }
+
+    // MARK: Headings / rules
+
+    private static func parseHeading(_ line: String) -> RichTextBlock? {
+        let trimmed = line.drop(while: { $0 == " " })
+        let level = trimmed.prefix(while: { $0 == "#" }).count
+        if level < 1 || level > 6 {
+            return nil
+        }
+        let rest = trimmed.dropFirst(level)
+        if let first = rest.first, first != " " {
+            return nil
+        }
+        var content = rest.trimmingCharacters(in: .whitespaces)
+        content = content.replacingOccurrences(of: "\\s*#+\\s*$", with: "", options: .regularExpression)
+        return .heading(level: level, RichTextInlineParser.parse(content))
+    }
+
+    private static func isThematicBreak(_ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.count < 3 {
+            return false
+        }
+        let distinct = Set(t.filter { $0 != " " })
+        guard distinct.count == 1, let c = distinct.first, c == "-" || c == "*" || c == "_" else {
+            return false
+        }
+        return t.filter({ $0 == c }).count >= 3
+    }
+
+    // MARK: Block quote
+
+    private static func isBlockQuote(_ line: String) -> Bool {
+        return line.drop(while: { $0 == " " }).first == ">"
+    }
+
+    private static func parseBlockQuote(_ lines: [String], _ i: inout Int) -> RichTextBlock {
+        var inner: [String] = []
+        while i < lines.count {
+            let stripped = lines[i].drop(while: { $0 == " " })
+            if stripped.first == ">" {
+                var rest = stripped.dropFirst()
+                if rest.first == " " {
+                    rest = rest.dropFirst()
+                }
+                inner.append(String(rest))
+                i += 1
+            } else {
+                break
+            }
+        }
+        return .blockQuote(parseBlocks(inner))
+    }
+
+    // MARK: Lists
+
+    private struct ListMarker {
+        let ordered: Bool
+        let start: Int
+        let indent: Int
+        let contentIndent: Int
+        let content: String
+    }
+
+    private static func listItemMatch(_ line: String) -> ListMarker? {
+        let indent = line.prefix(while: { $0 == " " }).count
+        let afterIndent = line.dropFirst(indent)
+        guard let first = afterIndent.first else {
+            return nil
+        }
+
+        if first == "-" || first == "*" || first == "+" {
+            let afterMarker = afterIndent.dropFirst()
+            guard afterMarker.first == " " else {
+                return nil
+            }
+            let spaces = afterMarker.prefix(while: { $0 == " " }).count
+            let content = String(afterMarker.dropFirst(spaces))
+            return ListMarker(ordered: false, start: 1, indent: indent,
+                              contentIndent: indent + 1 + spaces, content: content)
+        }
+
+        let digits = afterIndent.prefix(while: { $0.isNumber })
+        if !digits.isEmpty {
+            let afterDigits = afterIndent.dropFirst(digits.count)
+            guard let delim = afterDigits.first, delim == "." || delim == ")" else {
+                return nil
+            }
+            let afterDelim = afterDigits.dropFirst()
+            guard afterDelim.first == " " else {
+                return nil
+            }
+            let spaces = afterDelim.prefix(while: { $0 == " " }).count
+            let content = String(afterDelim.dropFirst(spaces))
+            return ListMarker(ordered: true, start: Int(digits) ?? 1, indent: indent,
+                              contentIndent: indent + digits.count + 1 + spaces, content: content)
+        }
+
+        return nil
+    }
+
+    private static func parseList(_ lines: [String], _ i: inout Int) -> RichTextBlock {
+        let first = listItemMatch(lines[i])!
+        let ordered = first.ordered
+        let baseIndent = first.indent
+        var items: [[RichTextBlock]] = []
+        var loose = false
+
+        while i < lines.count {
+            guard let marker = listItemMatch(lines[i]),
+                  marker.indent == baseIndent,
+                  marker.ordered == ordered else {
+                break
+            }
+            let contentIndent = marker.contentIndent
+            var itemLines: [String] = [marker.content]
+            i += 1
+
+            while i < lines.count {
+                let line = lines[i]
+                if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    let next = (i + 1) < lines.count ? lines[i + 1] : nil
+                    let continues = next.map { line2 -> Bool in
+                        let lead = line2.prefix(while: { $0 == " " }).count
+                        if lead >= contentIndent {
+                            return true
+                        }
+                        return listItemMatch(line2)?.indent == baseIndent
+                    } ?? false
+                    if continues {
+                        loose = true
+                        itemLines.append("")
+                        i += 1
+                        continue
+                    }
+                    break
+                }
+                if let sibling = listItemMatch(line), sibling.indent == baseIndent {
+                    break
+                }
+                let lead = line.prefix(while: { $0 == " " }).count
+                if lead >= contentIndent {
+                    itemLines.append(String(line.dropFirst(contentIndent)))
+                    i += 1
+                } else if listItemMatch(line)?.indent ?? -1 > baseIndent {
+                    itemLines.append(String(line.dropFirst(min(contentIndent, lead))))
+                    i += 1
+                } else {
+                    itemLines.append(line)
+                    i += 1
+                }
+            }
+            items.append(parseBlocks(itemLines))
+        }
+
+        return .list(ordered: ordered, start: first.start, tight: !loose, items: items)
+    }
+
+    // MARK: Tables (GFM)
+
+    private static func parseTable(_ lines: [String], _ i: inout Int) -> RichTextBlock? {
+        guard lines[i].contains("|"), (i + 1) < lines.count, isTableDelimiter(lines[i + 1]) else {
+            return nil
+        }
+        let headers = splitTableRow(lines[i]).map { RichTextInlineParser.parse($0) }
+        let alignments = parseAlignments(lines[i + 1])
+        var rows: [[[RichTextInline]]] = []
+        var j = i + 2
+        while j < lines.count {
+            let line = lines[j]
+            if line.trimmingCharacters(in: .whitespaces).isEmpty || !line.contains("|") {
+                break
+            }
+            rows.append(splitTableRow(line).map { RichTextInlineParser.parse($0) })
+            j += 1
+        }
+        i = j
+        return .table(headers: headers, alignments: alignments, rows: rows)
+    }
+
+    private static func isTableDelimiter(_ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if !t.contains("-") || !t.contains("|") {
+            return false
+        }
+        for c in t where c != "|" && c != ":" && c != "-" && c != " " {
+            return false
+        }
+        return true
+    }
+
+    private static func splitTableRow(_ line: String) -> [String] {
+        var t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("|") {
+            t = String(t.dropFirst())
+        }
+        if t.hasSuffix("|") {
+            t = String(t.dropLast())
+        }
+        return t.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func parseAlignments(_ line: String) -> [RichTextColumnAlignment] {
+        return splitTableRow(line).map { cell in
+            let left = cell.hasPrefix(":")
+            let right = cell.hasSuffix(":")
+            if left && right {
+                return .center
+            }
+            if right {
+                return .right
+            }
+            if left {
+                return .left
+            }
+            return .none
+        }
+    }
+
+    // MARK: Paragraph
+
+    private static func parseParagraph(_ lines: [String], _ i: inout Int) -> RichTextBlock {
+        var collected: [String] = []
+        while i < lines.count {
+            let line = lines[i]
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                break
+            }
+            if isThematicBreak(line) || isFenceStartLine(line) || isBlockQuote(line)
+                || parseHeading(line) != nil || listItemMatch(line) != nil {
+                break
+            }
+            if line.contains("|"), (i + 1) < lines.count, isTableDelimiter(lines[i + 1]) {
+                break
+            }
+            collected.append(line)
+            i += 1
+        }
+        return .paragraph(RichTextInlineParser.parse(joinParagraph(collected)))
+    }
+
+    private static func joinParagraph(_ lines: [String]) -> String {
+        var result = ""
+        for (index, raw) in lines.enumerated() {
+            let hardBreak = raw.hasSuffix("  ") || raw.hasSuffix("\\")
+            var line = String(raw.reversed().drop(while: { $0 == " " }).reversed())
+            if hardBreak, line.hasSuffix("\\") {
+                line = String(line.dropLast())
+            }
+            result += line
+            if index < lines.count - 1 {
+                result += hardBreak ? "\u{2028}" : " "
+            }
+        }
+        return result
+    }
+}
+
+// MARK: - Inline parser
+
+private struct RichTextInlineParser {
+    private let chars: [Character]
+    private var pos = 0
+
+    private init(_ text: String) {
+        self.chars = Array(text)
+    }
+
+    static func parse(_ text: String) -> [RichTextInline] {
+        var parser = RichTextInlineParser(text)
+        return parser.parseRuns(stop: nil).nodes
+    }
+
+    private mutating func parseRuns(stop: String?) -> (nodes: [RichTextInline], matched: Bool) {
+        var nodes: [RichTextInline] = []
+        var buffer = ""
+
+        func flush() {
+            if !buffer.isEmpty {
+                nodes.append(.text(buffer))
+                buffer = ""
+            }
+        }
+
+        while pos < chars.count {
+            if let stop, matches(stop, at: pos) {
+                pos += stop.count
+                flush()
+                return (nodes, true)
+            }
+
+            let c = chars[pos]
+            switch c {
+            case "\\":
+                if pos + 1 < chars.count, isEscapable(chars[pos + 1]) {
+                    buffer.append(chars[pos + 1])
+                    pos += 2
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
+            case "\u{2028}":
+                flush()
+                nodes.append(.lineBreak)
+                pos += 1
+            case "`":
+                if let node = parseCodeSpan() {
+                    flush()
+                    nodes.append(node)
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
+            case "*", "_", "~":
+                if let node = parseEmphasis(c) {
+                    flush()
+                    nodes.append(node)
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
+            case "[":
+                if let node = parseLink() {
+                    flush()
+                    nodes.append(node)
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
+            default:
+                buffer.append(c)
+                pos += 1
+            }
+        }
+
+        flush()
+        return (nodes, false)
+    }
+
+    private func matches(_ s: String, at index: Int) -> Bool {
+        let needle = Array(s)
+        if index + needle.count > chars.count {
+            return false
+        }
+        for k in 0..<needle.count where chars[index + k] != needle[k] {
+            return false
+        }
+        return true
+    }
+
+    private func isEscapable(_ c: Character) -> Bool {
+        return "\\`*_{}[]()#+-.!~>|\"".contains(c)
+    }
+
+    private mutating func parseCodeSpan() -> RichTextInline? {
+        let start = pos
+        var ticks = 0
+        while pos < chars.count, chars[pos] == "`" {
+            ticks += 1
+            pos += 1
+        }
+        var j = pos
+        while j < chars.count {
+            if chars[j] != "`" {
+                j += 1
+                continue
+            }
+            var run = 0
+            var k = j
+            while k < chars.count, chars[k] == "`" {
+                run += 1
+                k += 1
+            }
+            if run == ticks {
+                let content = String(chars[pos..<j])
+                pos = k
+                return .code(trimCodeSpan(content))
+            }
+            j = k
+        }
+        pos = start
+        return nil
+    }
+
+    private func trimCodeSpan(_ s: String) -> String {
+        if s.count >= 2, s.first == " ", s.last == " ", s.contains(where: { $0 != " " }) {
+            return String(s.dropFirst().dropLast())
+        }
+        return s
+    }
+
+    private mutating func parseEmphasis(_ marker: Character) -> RichTextInline? {
+        let start = pos
+        var run = 0
+        while pos < chars.count, chars[pos] == marker {
+            run += 1
+            pos += 1
+        }
+
+        if marker == "~" {
+            if run < 2 {
+                pos = start
+                return nil
+            }
+            pos = start + 2
+            let inner = parseRuns(stop: "~~")
+            if inner.matched {
+                return .strikethrough(inner.nodes)
+            }
+            pos = start
+            return nil
+        }
+
+        let level = min(run, 3)
+        let closer = String(repeating: marker, count: level)
+        pos = start + level
+        let inner = parseRuns(stop: closer)
+        if inner.matched {
+            switch level {
+            case 1:
+                return .emphasis(inner.nodes)
+            case 2:
+                return .strong(inner.nodes)
+            default:
+                return .strong([.emphasis(inner.nodes)])
+            }
+        }
+        pos = start
+        return nil
+    }
+
+    private mutating func parseLink() -> RichTextInline? {
+        let start = pos
+        pos += 1
+        let text = parseRuns(stop: "]")
+        guard text.matched, pos < chars.count, chars[pos] == "(" else {
+            pos = start
+            return nil
+        }
+        pos += 1
+        var url = ""
+        var depth = 1
+        while pos < chars.count {
+            let c = chars[pos]
+            if c == "(" {
+                depth += 1
+                url.append(c)
+                pos += 1
+            } else if c == ")" {
+                depth -= 1
+                if depth == 0 {
+                    pos += 1
+                    return .link(text: text.nodes, url: url.trimmingCharacters(in: .whitespaces))
+                }
+                url.append(c)
+                pos += 1
+            } else {
+                url.append(c)
+                pos += 1
+            }
+        }
+        pos = start
+        return nil
+    }
+}

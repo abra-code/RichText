@@ -1,0 +1,48 @@
+# xcodegen spec for the RichTextView demo app (macOS + iOS).
+# Generate + build with:
+#   cd Demo && xcodegen generate
+#   xcodebuild -project RichTextDemo.xcodeproj -scheme RichTextDemo -destination 'generic/platform=macOS' build
+#   xcodebuild -project RichTextDemo.xcodeproj -scheme RichTextDemo -destination 'generic/platform=iOS Simulator' build
+
+name: RichTextDemo
+
+options:
+  bundleIdPrefix: com.example.richtext
+  createIntermediateGroups: true
+
+packages:
+  RichTextView:
+    path: ..
+
+targets:
+  RichTextDemo:
+    type: application
+    supportedDestinations: [macOS, iOS]
+    deploymentTarget:
+      macOS: "13.0"
+      iOS: "16.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: RichTextView
+        product: RichTextView
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.richtext.demo
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: "NO"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+
+schemes:
+  RichTextDemo:
+    build:
+      targets:
+        RichTextDemo: all
+    run:
+      config: Debug
