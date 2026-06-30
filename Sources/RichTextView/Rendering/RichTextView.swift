@@ -14,24 +14,50 @@ import AppKit
 import UIKit
 #endif
 
+/// Which TextKit substrate renders the view. The two paths are visually equivalent for everything except
+/// tables; they exist side by side so they can be switched and compared (see the design doc).
+/// - `textKit1`: a custom NSLayoutManager paints decorations; tables use native NSTextTable on macOS.
+/// - `textKit2`: a custom NSTextLayoutFragment paints decorations; tables use one drawn-grid path on both
+///   platforms (the substrate for the future wrapping-cell fragment, Strategy T2).
+public enum RichTextEngine: Sendable, Hashable {
+    case textKit1
+    case textKit2
+}
+
 public struct RichTextView: View {
     private let attributed: NSAttributedString
+    private let engine: RichTextEngine
+    private let metrics: RichTextDecorationMetrics
 
-    public init(_ document: RichTextDocument, theme: RichTextTheme = .default) {
-        self.attributed = RichTextAttributedString.make(document, theme: theme)
+    public init(_ document: RichTextDocument, theme: RichTextTheme = .default, engine: RichTextEngine = .textKit1) {
+        self.engine = engine
+        self.attributed = RichTextAttributedString.make(document, theme: theme, engine: engine)
+        self.metrics = RichTextDecorationMetrics(codeCornerRadius: theme.codeCornerRadius)
     }
 
-    public init(markdown: String, theme: RichTextTheme = .default) {
-        self.init(RichTextDocument(markdown: markdown), theme: theme)
+    public init(markdown: String, theme: RichTextTheme = .default, engine: RichTextEngine = .textKit1) {
+        self.init(RichTextDocument(markdown: markdown), theme: theme, engine: engine)
     }
 
-    public init(attributed: NSAttributedString) {
+    public init(attributed: NSAttributedString, engine: RichTextEngine = .textKit1) {
+        self.engine = engine
         self.attributed = attributed
+        self.metrics = RichTextDecorationMetrics()
     }
 
     public var body: some View {
-        RichTextRepresentable(attributed: attributed)
+        content
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch engine {
+        case .textKit1:
+            RichTextRepresentableTK1(attributed: attributed)
+        case .textKit2:
+            RichTextRepresentableTK2(attributed: attributed, metrics: metrics)
+        }
     }
 }
 
@@ -60,7 +86,7 @@ private final class TextKitStack {
 
 #if canImport(AppKit)
 
-private struct RichTextRepresentable: NSViewRepresentable {
+private struct RichTextRepresentableTK1:NSViewRepresentable {
     let attributed: NSAttributedString
 
     func makeCoordinator() -> TextKitStack {
@@ -107,7 +133,7 @@ private struct RichTextRepresentable: NSViewRepresentable {
 
 #elseif canImport(UIKit)
 
-private struct RichTextRepresentable: UIViewRepresentable {
+private struct RichTextRepresentableTK1:UIViewRepresentable {
     let attributed: NSAttributedString
 
     func makeCoordinator() -> TextKitStack {

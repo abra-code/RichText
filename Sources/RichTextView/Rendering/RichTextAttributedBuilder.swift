@@ -15,9 +15,12 @@ import UIKit
 #endif
 
 public enum RichTextAttributedString {
-    /// The whole document as one attributed string.
-    public static func make(_ document: RichTextDocument, theme: RichTextTheme = .default) -> NSAttributedString {
-        let builder = RichTextAttributedBuilder(theme: theme)
+    /// The whole document as one attributed string. `engine` selects the table strategy: TextKit 1 keeps
+    /// the per-platform split (native NSTextTable on macOS), while TextKit 2 always uses the T1 tab-stop
+    /// table so the custom layout fragment draws the grid uniformly on both platforms.
+    public static func make(_ document: RichTextDocument, theme: RichTextTheme = .default,
+                            engine: RichTextEngine = .textKit1) -> NSAttributedString {
+        let builder = RichTextAttributedBuilder(theme: theme, engine: engine)
         return builder.build(document.blocks)
     }
 }
@@ -25,13 +28,15 @@ public enum RichTextAttributedString {
 final class RichTextAttributedBuilder {
     private let storage = NSMutableAttributedString()
     private let theme: RichTextTheme
+    private let engine: RichTextEngine
 
     private let bodyFont: RTVFont
     private let baseSize: CGFloat
     private let monoFont: RTVFont
 
-    init(theme: RichTextTheme) {
+    init(theme: RichTextTheme, engine: RichTextEngine = .textKit1) {
         self.theme = theme
+        self.engine = engine
         self.bodyFont = RTVFonts.body(theme.baseFontSize)
         self.baseSize = bodyFont.pointSize
         self.monoFont = RTVFonts.monospaced(bodyFont.pointSize * 0.94)
@@ -147,12 +152,18 @@ final class RichTextAttributedBuilder {
 
     // MARK: - Tables
 
-    // Platform split (design doc section 10, "renderer diverges"): macOS uses a native NSTextTable for
-    // wrapping-cell fidelity (P4); iOS / visionOS use the T1 tab-stop + drawn-grid path (P2, single-line
-    // cells), since NSTextTable is AppKit-only. Copy is table-aware on both via the RTF serializer.
-    // Unifying iOS to wrapping cells is the remaining P4 work (a TextKit 2 custom layout fragment).
+    // Table strategy depends on the engine (design doc section 10, "renderer diverges").
+    // - TextKit 1: macOS uses a native NSTextTable for wrapping-cell fidelity (P4); iOS / visionOS use the
+    //   T1 tab-stop + drawn-grid path (P2, single-line cells), since NSTextTable is AppKit-only.
+    // - TextKit 2: BOTH platforms use the T1 tab-stop path, and the custom NSTextLayoutFragment draws the
+    //   grid - one rendering path, the substrate for the future wrapping-cell fragment (Strategy T2).
+    // Copy is table-aware on both via the RTF serializer regardless of engine.
     private func appendTable(headers: [[RichTextInline]], alignments: [RichTextColumnAlignment],
                              rows: [[[RichTextInline]]], indent: CGFloat, color: RTVColor, quoteBarX: CGFloat?) {
+        if engine == .textKit2 {
+            appendTableT1(headers: headers, alignments: alignments, rows: rows, indent: indent, color: color, quoteBarX: quoteBarX)
+            return
+        }
         #if canImport(AppKit)
         appendTableNative(headers: headers, alignments: alignments, rows: rows, color: color)
         #else

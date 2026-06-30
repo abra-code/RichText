@@ -64,13 +64,26 @@ That is all.
 
 struct DemoView: View {
     private let document = RichTextDocument(markdown: sampleMarkdown)
+    @State private var engine: RichTextEngine = .textKit1
 
     var body: some View {
         ScrollView {
-            RichTextView(document)
+            // `id(engine)` rebuilds the representable when the engine changes, so switching swaps the
+            // whole text-view backend (TextKit 1 <-> TextKit 2) for a like-for-like comparison.
+            RichTextView(document, engine: engine)
                 .padding()
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
+                .id(engine)
+        }
+        .safeAreaInset(edge: .top) {
+            Picker("Engine", selection: $engine) {
+                Text("TextKit 1").tag(RichTextEngine.textKit1)
+                Text("TextKit 2").tag(RichTextEngine.textKit2)
+            }
+            .pickerStyle(.segmented)
+            .padding()
+            .background(.regularMaterial)
         }
         .safeAreaInset(edge: .bottom) {
             Button {
