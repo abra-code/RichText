@@ -32,9 +32,19 @@ final class RichTextSerializerTests: XCTestCase {
 
     func testHTMLContainsBlocksAndInline() {
         let html = RichTextHTMLSerializer.fragment(from: richDoc)
-        for needle in ["<h1>", "<strong>", "<em>", "<code>", "<a href=\"https://swift.org\"",
-                       "<blockquote>", "<pre><code", "<hr>", "<table>", "<th", "<td"] {
+        // Tag prefixes (the tags now carry inline style="..." attributes).
+        for needle in ["<h1", "<strong>", "<em>", "<code", "<a href=\"https://swift.org\"",
+                       "<blockquote", "<pre", "<hr", "<table", "<th", "<td"] {
             XCTAssertTrue(html.contains(needle), "HTML missing '\(needle)'")
+        }
+    }
+
+    func testHTMLStylesAreInline() {
+        let html = RichTextHTMLSerializer.fragment(from: richDoc)
+        // The look travels as inline styles so it survives paste into stylesheet-stripping targets.
+        for needle in ["border-collapse:collapse", "border:1px solid", "background:#f0f0f0",
+                       "border-left:3px solid", "border-top:1px solid", "font-size:1.6em"] {
+            XCTAssertTrue(html.contains(needle), "HTML missing style '\(needle)'")
         }
     }
 
