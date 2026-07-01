@@ -1,4 +1,4 @@
-// Sources/RichTextView/Serialization/RichTextMarkdownSerializer.swift
+// Sources/RichText/Serialization/RichTextMarkdownSerializer.swift
 //
 // Model -> Markdown. The inverse of the parser; used for plain round-trip on the pasteboard.
 

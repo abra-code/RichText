@@ -1,10 +1,10 @@
-// Tests/RichTextViewTests/RichTextImageRTFTests.swift
+// Tests/RichTextTests/RichTextImageRTFTests.swift
 //
 // Image copy fidelity for RTF: a loaded image embeds as a {\pict\pngblip ...} so the picture survives
 // paste into TextEdit / Word; an unloaded image falls back to the alt text.
 
 import XCTest
-@testable import RichTextView
+@testable import RichText
 
 final class RichTextImageRTFTests: XCTestCase {
 

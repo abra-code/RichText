@@ -1,4 +1,4 @@
-// Sources/RichTextView/Markdown/RichTextMarkdownParser.swift
+// Sources/RichText/Markdown/RichTextMarkdownParser.swift
 //
 // A small, dependency-free Markdown parser - one convenient way to build a RichTextDocument. It is a
 // line-based block parser plus a recursive inline parser covering the subset a chat / document surface

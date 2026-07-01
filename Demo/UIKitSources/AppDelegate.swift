@@ -6,10 +6,10 @@
 // without SwiftUI involved.
 
 import UIKit
-import RichTextView
+import RichText
 
 private let sampleMarkdown = """
-# RichTextView - UIKit / TextKit 2
+# RichText - UIKit / TextKit 2
 
 One selectable text view, **no SwiftUI**. Select across *everything*, and tap the [link](https://www.swift.org).
 
@@ -47,7 +47,7 @@ func greet(_ name: String) -> String {
 That is all.
 """
 
-final class RichTextViewController: UIViewController {
+final class RichTextDemoViewController: UIViewController {
     private var owner: AnyObject?
 
     override func viewDidLoad() {
@@ -80,7 +80,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = RichTextViewController()
+        window.rootViewController = RichTextDemoViewController()
         window.makeKeyAndVisible()
         self.window = window
         return true

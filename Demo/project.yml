@@ -1,4 +1,4 @@
-# xcodegen spec for the RichTextView demo app (macOS + iOS).
+# xcodegen spec for the RichText demo app (macOS + iOS).
 # Generate + build with:
 #   cd Demo && xcodegen generate
 #   xcodebuild -project RichTextDemo.xcodeproj -scheme RichTextDemo -destination 'generic/platform=macOS' build
@@ -11,7 +11,7 @@ options:
   createIntermediateGroups: true
 
 packages:
-  RichTextView:
+  RichText:
     path: ..
 
 targets:
@@ -24,8 +24,8 @@ targets:
     sources:
       - path: Sources
     dependencies:
-      - package: RichTextView
-        product: RichTextView
+      - package: RichText
+        product: RichText
     settings:
       base:
         SWIFT_VERSION: "6.0"
@@ -48,8 +48,8 @@ targets:
     sources:
       - path: AppKitSources
     dependencies:
-      - package: RichTextView
-        product: RichTextView
+      - package: RichText
+        product: RichText
     settings:
       base:
         SWIFT_VERSION: "6.0"
@@ -70,8 +70,8 @@ targets:
     sources:
       - path: UIKitSources
     dependencies:
-      - package: RichTextView
-        product: RichTextView
+      - package: RichText
+        product: RichText
     settings:
       base:
         SWIFT_VERSION: "6.0"

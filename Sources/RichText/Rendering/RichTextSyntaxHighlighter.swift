@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextSyntaxHighlighter.swift
+// Sources/RichText/Rendering/RichTextSyntaxHighlighter.swift
 //
 // A small, dependency-free syntax highlighter for fenced code blocks (design doc P5). It is a GENERIC
 // lexer - it recognizes comments, strings, numbers, and a per-language keyword set - rather than a full

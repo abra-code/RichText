@@ -1,4 +1,4 @@
-// Tests/RichTextViewTests/RichTextImageTranscodeTests.swift
+// Tests/RichTextTests/RichTextImageTranscodeTests.swift
 //
 // The copy-embedding transcode (RichTextEmbeddedImage): turns an image's ORIGINAL bytes (handed back by the
 // AsyncImageCache store) into the RichTextInlineImage the RTF/HTML serializers embed. PNG/JPEG/GIF keep their
@@ -6,7 +6,7 @@
 // logic lives in RichText, not in the generic cache module.
 
 import XCTest
-@testable import RichTextView
+@testable import RichText
 
 #if canImport(UIKit)
 import UIKit

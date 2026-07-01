@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextAppKit.swift
+// Sources/RichText/Rendering/RichTextAppKit.swift
 //
 // The AppKit (no SwiftUI) construction of the TextKit 2 rich-text view, factored out so a plain AppKit
 // host and the SwiftUI representable build the EXACT same text view. This lets the two be compared to

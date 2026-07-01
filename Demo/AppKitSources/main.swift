@@ -6,10 +6,10 @@
 // the text view's textStorage, not NSTextContentStorage.attributedString).
 
 import AppKit
-import RichTextView
+import RichText
 
 private let sampleMarkdown = """
-# RichTextView - AppKit / TextKit 2
+# RichText - AppKit / TextKit 2
 
 One selectable text view, **no SwiftUI**. Select across *everything*, double / triple click, Cmd+A, and
 click the [link](https://www.swift.org).
@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
-        window.title = "RichTextView - AppKit (TextKit 2)"
+        window.title = "RichText - AppKit (TextKit 2)"
         window.center()
         window.contentView = scrollView
         window.makeKeyAndOrderFront(nil)

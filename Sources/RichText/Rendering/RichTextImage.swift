@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextImage.swift
+// Sources/RichText/Rendering/RichTextImage.swift
 //
 // Asynchronous image rendering. A Markdown image (![alt](url)) becomes a RichTextImageAttachment - an
 // NSTextAttachment that starts as a sized placeholder (so layout reserves space) and, once the bytes are

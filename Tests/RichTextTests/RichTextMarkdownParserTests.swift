@@ -1,7 +1,7 @@
-// Tests/RichTextViewTests/RichTextMarkdownParserTests.swift
+// Tests/RichTextTests/RichTextMarkdownParserTests.swift
 
 import XCTest
-@testable import RichTextView
+@testable import RichText
 
 final class RichTextMarkdownParserTests: XCTestCase {
 

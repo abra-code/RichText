@@ -1,4 +1,4 @@
-# RichTextView
+# RichText
 
 A dependency-free, cross-platform (iOS / iPadOS / macOS / visionOS) component that renders a whole rich
 document - headings, paragraphs, code blocks, block quotes, lists, GFM tables, inline styling, links -
@@ -11,20 +11,20 @@ Investigation and full plan: `Private/ios-richtext-view-design.md`.
 ## Usage
 
 ```swift
-import RichTextView
+import RichText
 
 // From Markdown:
-RichTextView(markdown: "# Hello\n\nA **bold** word and a `code` span.")
+RichText(markdown: "# Hello\n\nA **bold** word and a `code` span.")
 
 // From the document model (build it however you like):
 let doc = RichTextDocument(blocks: [.heading(level: 1, [.text("Hi")])])
-RichTextView(doc)
+RichText(doc)
 
 // Copy the document as rich text (RTF table + HTML + Markdown) to the pasteboard:
 RichTextPasteboard.write(doc)
 ```
 
-`RichTextView` is read-only-but-selectable and self-sizes to its content for the proposed width, so it
+`RichText` is read-only-but-selectable and self-sizes to its content for the proposed width, so it
 drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` for a runnable app.
 
 ## How it works
@@ -38,7 +38,7 @@ drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` f
 - **Two rendering engines, selectable side by side (`RichTextEngine`).** `.textKit1` paints decorations
   with a custom `NSLayoutManager` (`RichTextLayoutManager`); `.textKit2` paints them with a custom
   `NSTextLayoutFragment` (`RichTextLayoutFragment`) hosted in a TextKit 2 text view. They render
-  identically except for tables (see status). Pick one at the call site: `RichTextView(doc, engine: .textKit2)`.
+  identically except for tables (see status). Pick one at the call site: `RichText(doc, engine: .textKit2)`.
 - **Serialization is decoupled from rendering.** `RichTextRTFSerializer` writes real RTF tables
   (`\trowd` / `\cellx` / `\cell` / `\row`), `RichTextHTMLSerializer` writes `<table>`, and
   `RichTextMarkdownSerializer` writes Markdown - so copy carries a real table even on iOS, where TextKit
@@ -107,15 +107,15 @@ A TextKit 1 graph is rooted at the `NSTextStorage` (storage -> strong -> layout 
 container); the back-pointers `container.layoutManager` and `layoutManager.textStorage` are weak. The
 text view holds only the container, so if nothing else retains the storage and layout manager they are
 deallocated immediately, leaving `container.layoutManager == nil`. `UITextView(frame:textContainer:)`
-then asserts *"text container must already have a layout manager."* `RichTextView` keeps the whole stack
+then asserts *"text container must already have a layout manager."* `RichText` keeps the whole stack
 (`TextKitStack`) in the SwiftUI `Coordinator`, so it lives as long as the view.
 
 ## Layout
 
-- `Sources/RichTextView/Model/` - `RichTextDocument` (blocks + inline runs).
-- `Sources/RichTextView/Markdown/` - the from-scratch Markdown parser (one input builder).
-- `Sources/RichTextView/Rendering/` - attributes/theme, the attributed-string builder, the custom layout
-  manager, and the SwiftUI `RichTextView`.
-- `Sources/RichTextView/Serialization/` - RTF / HTML / Markdown writers + the pasteboard helper.
-- `Tests/RichTextViewTests/` - parser + serializer tests.
+- `Sources/RichText/Model/` - `RichTextDocument` (blocks + inline runs).
+- `Sources/RichText/Markdown/` - the from-scratch Markdown parser (one input builder).
+- `Sources/RichText/Rendering/` - attributes/theme, the attributed-string builder, the custom layout
+  manager, and the SwiftUI `RichText`.
+- `Sources/RichText/Serialization/` - RTF / HTML / Markdown writers + the pasteboard helper.
+- `Tests/RichTextTests/` - parser + serializer tests.
 - `Demo/` - a multiplatform demo app (xcodegen).

@@ -1,6 +1,6 @@
 // swift-tools-version: 6.0
 //
-// RichTextView - a high-fidelity, dependency-free rich-text DISPLAY component that renders a whole
+// RichText - a high-fidelity, dependency-free rich-text DISPLAY component that renders a whole
 // document (headings, code blocks, quotes, lists, GFM tables, inline styling, links) into ONE native
 // text view, so the entire document is selectable and copyable as a single unit. Cross-platform
 // (iOS / iPadOS / macOS / visionOS) on TextKit 2, with table-aware copy serialization (RTF / HTML /
@@ -11,14 +11,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "RichTextView",
+    name: "RichText",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
         .visionOS(.v1),
     ],
     products: [
-        .library(name: "RichTextView", targets: ["RichTextView"]),
+        .library(name: "RichText", targets: ["RichText"]),
     ],
     dependencies: [
         // AsyncImageCache lives in its own repo, a sibling directory. Filesystem reference for now; when it
@@ -27,9 +27,9 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "RichTextView",
+            name: "RichText",
             dependencies: [.product(name: "AsyncImageCache", package: "AsyncImageCache")]
         ),
-        .testTarget(name: "RichTextViewTests", dependencies: ["RichTextView"]),
+        .testTarget(name: "RichTextTests", dependencies: ["RichText"]),
     ]
 )

@@ -1,4 +1,4 @@
-// Sources/RichTextView/Serialization/RichTextHTMLSerializer.swift
+// Sources/RichText/Serialization/RichTextHTMLSerializer.swift
 //
 // Model -> HTML. A real <table> (and the other blocks), for web / rich paste targets. Blocks carry
 // INLINE styles (style="...", not a <style> block or CSS classes) so the look survives paste into targets

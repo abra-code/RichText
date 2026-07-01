@@ -1,7 +1,7 @@
-// Tests/RichTextViewTests/RichTextSerializerTests.swift
+// Tests/RichTextTests/RichTextSerializerTests.swift
 
 import XCTest
-@testable import RichTextView
+@testable import RichText
 
 final class RichTextSerializerTests: XCTestCase {
 

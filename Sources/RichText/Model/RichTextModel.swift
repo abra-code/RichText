@@ -1,4 +1,4 @@
-// Sources/RichTextView/Model/RichTextModel.swift
+// Sources/RichText/Model/RichTextModel.swift
 //
 // The cross-platform document model: a tree of blocks and inline runs. This is the single source of
 // truth - it is what the attributed-string builder renders and what the serializers (RTF / HTML /

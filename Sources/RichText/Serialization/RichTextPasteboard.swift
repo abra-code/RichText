@@ -1,4 +1,4 @@
-// Sources/RichTextView/Serialization/RichTextPasteboard.swift
+// Sources/RichText/Serialization/RichTextPasteboard.swift
 //
 // Writes a document to the system pasteboard in MULTIPLE representations (RTF with real tables, HTML,
 // and Markdown/plain) so each paste target picks the richest it supports - the way Notes interoperates.

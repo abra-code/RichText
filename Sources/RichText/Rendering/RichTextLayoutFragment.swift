@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextLayoutFragment.swift
+// Sources/RichText/Rendering/RichTextLayoutFragment.swift
 //
 // The TextKit 2 decoration painter - the strategic counterpart to RichTextLayoutManager (TextKit 1).
 // A custom NSTextLayoutFragment draws the block decorations the text stacks have no native model for

@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextLayoutManager.swift
+// Sources/RichText/Rendering/RichTextLayoutManager.swift
 //
 // The decoration painter. A custom NSLayoutManager (TextKit 1, cross-platform) that draws the block
 // decorations the iOS / macOS text stacks have no native model for: the code-block rounded rectangle,

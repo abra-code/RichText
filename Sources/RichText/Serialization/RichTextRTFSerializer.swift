@@ -1,4 +1,4 @@
-// Sources/RichTextView/Serialization/RichTextRTFSerializer.swift
+// Sources/RichText/Serialization/RichTextRTFSerializer.swift
 //
 // Model -> RTF, including REAL tables (\trowd / \cellx / \intbl / \cell / \row). This is the whole
 // point of decoupling serialization from rendering: iOS TextKit has no NSTextTable to serialize, so a

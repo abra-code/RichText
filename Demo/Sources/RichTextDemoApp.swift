@@ -1,11 +1,11 @@
 // Demo/Sources/RichTextDemoApp.swift
 //
-// A minimal multiplatform app to verify RichTextView on iOS and macOS: it renders a rich sample
+// A minimal multiplatform app to verify RichText on iOS and macOS: it renders a rich sample
 // document in one selectable text view, and offers "Copy as rich text" (RichTextPasteboard) so the
 // table-aware RTF / HTML / Markdown copy can be pasted into TextEdit / Notes / a browser.
 
 import SwiftUI
-import RichTextView
+import RichText
 
 @main
 struct RichTextDemoApp: App {
@@ -17,7 +17,7 @@ struct RichTextDemoApp: App {
 }
 
 private let sampleMarkdown = """
-# RichTextView
+# RichText
 
 A whole document rendered in **one** selectable text view - select and copy across *everything*,
 including the table.
@@ -88,7 +88,7 @@ struct DemoView: View {
         ScrollView {
             // `id(engine)` rebuilds the representable when the engine changes, so switching swaps the
             // whole text-view backend (TextKit 1 <-> TextKit 2) for a like-for-like comparison.
-            RichTextView(document, engine: engine)
+            RichText(document, engine: engine)
                 .padding()
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)

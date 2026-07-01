@@ -1,9 +1,9 @@
-// Sources/RichTextView/Rendering/RichTextViewTK2.swift
+// Sources/RichText/Rendering/RichTextTK2.swift
 //
-// The TextKit 2 backend for RichTextView: hosts the document in a TK2-backed text view whose layout
+// The TextKit 2 backend for RichText: hosts the document in a TK2-backed text view whose layout
 // manager vends our custom RichTextLayoutFragment (RichTextLayoutFragment.swift) to paint decorations.
 // It is read-only-but-selectable, non-scrolling, transparent, and self-sizes by measuring the laid-out
-// fragments. The TextKit 1 backend (RichTextRepresentableTK1, in RichTextView.swift) is unchanged; the
+// fragments. The TextKit 1 backend (RichTextRepresentableTK1, in RichText.swift) is unchanged; the
 // two are selected by RichTextEngine so they can be compared.
 
 import SwiftUI

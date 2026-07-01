@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextImageEncoding.swift
+// Sources/RichText/Rendering/RichTextImageEncoding.swift
 //
 // Produces the embeddable COPY representation (RichTextInlineImage) from an image's ORIGINAL transport bytes.
 // This is a copy / serialization concern - deciding PNG vs JPEG for embedding, and computing a GIF still

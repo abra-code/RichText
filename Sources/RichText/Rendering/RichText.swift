@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextView.swift
+// Sources/RichText/Rendering/RichText.swift
 //
 // The public SwiftUI view. Renders a whole document into ONE native text view (NSTextView on macOS,
 // UITextView on iOS / visionOS), backed by an explicit TextKit 1 stack (NSTextStorage + the custom
@@ -24,7 +24,7 @@ public enum RichTextEngine: Sendable, Hashable {
     case textKit2
 }
 
-public struct RichTextView: View {
+public struct RichText: View {
     private let attributed: NSAttributedString
     private let engine: RichTextEngine
     private let metrics: RichTextDecorationMetrics

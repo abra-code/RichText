@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextAttributes.swift
+// Sources/RichText/Rendering/RichTextAttributes.swift
 //
 // Platform abstractions + the semantic MARKER attributes that the attributed-string builder writes and
 // the custom layout manager reads. Markers carry NO native block structure (no NSTextTable / NSTextBlock)

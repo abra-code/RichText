@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextUIKit.swift
+// Sources/RichText/Rendering/RichTextUIKit.swift
 //
 // The UIKit (no SwiftUI) construction of the TextKit 2 rich-text view - the parity counterpart to
 // RichTextAppKit. A plain UIKit host and the SwiftUI representable build the EXACT same UITextView through

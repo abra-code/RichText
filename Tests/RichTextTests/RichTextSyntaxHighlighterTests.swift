@@ -1,7 +1,7 @@
-// Tests/RichTextViewTests/RichTextSyntaxHighlighterTests.swift
+// Tests/RichTextTests/RichTextSyntaxHighlighterTests.swift
 
 import XCTest
-@testable import RichTextView
+@testable import RichText
 
 final class RichTextSyntaxHighlighterTests: XCTestCase {
 

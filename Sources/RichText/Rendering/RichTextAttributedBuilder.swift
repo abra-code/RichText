@@ -1,4 +1,4 @@
-// Sources/RichTextView/Rendering/RichTextAttributedBuilder.swift
+// Sources/RichText/Rendering/RichTextAttributedBuilder.swift
 //
 // Builds ONE NSAttributedString for a whole document so it renders in a single selectable text view.
 // Inline styling uses font traits + run attributes; block structure uses paragraph styles plus the

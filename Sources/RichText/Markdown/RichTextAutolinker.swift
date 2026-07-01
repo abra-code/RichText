@@ -1,4 +1,4 @@
-// Sources/RichTextView/Markdown/RichTextAutolinker.swift
+// Sources/RichText/Markdown/RichTextAutolinker.swift
 //
 // A post-pass over inline nodes that turns bare URLs in plain text into links (GFM-style autolinking), so
 // a URL typed without [](...) is still tappable. It runs after inline parsing, walking only `.text` nodes
