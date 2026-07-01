@@ -28,6 +28,14 @@ including the table.
 
 A bare URL autolinks too: visit https://swift.org or www.apple.com for more.
 
+Reference-style links: the [Swift forums][forums] and [docs] (a shortcut reference).
+
+## Image
+
+An image loads asynchronously (placeholder first, then the picture):
+
+![Swift logo](https://www.swift.org/apple-touch-icon.png)
+
 ## Lists
 
 - first item
@@ -55,13 +63,19 @@ func greet(_ name: String) -> String {
 
 ## Table
 
-| Feature  | Status | Notes                |
-| -------- | :----: | -------------------- |
-| Headings |   ok   | scaled, bold         |
-| Code     |   ok   | rounded background   |
-| Tables   |   ok   | drawn grid, T1       |
+Toggle the engine to compare table rendering. The Notes column is long on purpose, so wrapping (or the
+lack of it) is visible.
+
+| Feature  | Status | Notes                                                                    |
+| -------- | :----: | ------------------------------------------------------------------------ |
+| Headings |   ok   | scaled and bold, following the system text style                          |
+| Code     |   ok   | rounded background card, now with syntax highlighting and Dynamic Type    |
+| Tables   | ok-ish but really long and at some point it should wrap | wrapping cells need a custom TextKit 2 layout fragment - this note is deliberately long so it has to wrap onto multiple lines |
 
 ---
+
+[forums]: https://forums.swift.org
+[docs]: https://swift.org/documentation
 
 That is all.
 """

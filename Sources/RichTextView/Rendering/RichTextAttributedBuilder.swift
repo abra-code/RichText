@@ -247,6 +247,13 @@ final class RichTextAttributedBuilder {
             }
         }
 
+        // Cap the LAST column so a long cell wraps within it instead of overflowing on one line; the row
+        // grows taller and the wrapped lines indent to the last column (headIndent below). Cells remain
+        // real, selectable text (unlike a drawn table).
+        let lastColumn = columns - 1
+        let maxLastColumnWidth: CGFloat = 320
+        columnWidth[lastColumn] = min(columnWidth[lastColumn], maxLastColumnWidth)
+
         // Column edges (absolute x). edges has columns+1 entries: left of col0 .. right of last col.
         var edges: [CGFloat] = [indent]
         var x = indent
@@ -280,7 +287,8 @@ final class RichTextAttributedBuilder {
 
             let style = NSMutableParagraphStyle()
             style.firstLineHeadIndent = 0
-            style.headIndent = 0
+            style.headIndent = edges[lastColumn] + theme.cellPadding   // wrapped last-cell lines indent to its column
+            style.tailIndent = edges[columns]                          // wrap the last cell at the table's right edge
             style.tabStops = tabStops
             style.defaultTabInterval = 0
             style.paragraphSpacing = rowIndex == cells.count - 1 ? theme.blockSpacing : 0
