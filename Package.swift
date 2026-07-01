@@ -19,16 +19,17 @@ let package = Package(
     ],
     products: [
         .library(name: "RichTextView", targets: ["RichTextView"]),
-        .library(name: "AsyncImageCache", targets: ["AsyncImageCache"]),
+    ],
+    dependencies: [
+        // AsyncImageCache lives in its own repo, a sibling directory. Filesystem reference for now; when it
+        // is published this can become a versioned .package(url:) GitHub reference.
+        .package(path: "../AsyncImageCache"),
     ],
     targets: [
-        .target(name: "RichTextView", dependencies: ["AsyncImageCache"]),
-        .testTarget(name: "RichTextViewTests", dependencies: ["RichTextView"]),
-        .target(name: "AsyncImageCache", path: "Sources/AsyncImageCache", exclude: ["README.md"]),
-        .testTarget(
-            name: "AsyncImageCacheTests",
-            dependencies: ["AsyncImageCache"],
-            path: "Tests/AsyncImageCacheTests"
+        .target(
+            name: "RichTextView",
+            dependencies: [.product(name: "AsyncImageCache", package: "AsyncImageCache")]
         ),
+        .testTarget(name: "RichTextViewTests", dependencies: ["RichTextView"]),
     ]
 )
