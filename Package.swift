@@ -19,9 +19,16 @@ let package = Package(
     ],
     products: [
         .library(name: "RichTextView", targets: ["RichTextView"]),
+        .library(name: "AsyncImageCache", targets: ["AsyncImageCache"]),
     ],
     targets: [
-        .target(name: "RichTextView"),
+        .target(name: "RichTextView", dependencies: ["AsyncImageCache"]),
         .testTarget(name: "RichTextViewTests", dependencies: ["RichTextView"]),
+        .target(name: "AsyncImageCache", path: "Sources/AsyncImageCache", exclude: ["README.md"]),
+        .testTarget(
+            name: "AsyncImageCacheTests",
+            dependencies: ["AsyncImageCache"],
+            path: "Tests/AsyncImageCacheTests"
+        ),
     ]
 )

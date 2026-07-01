@@ -1,8 +1,9 @@
 // Tests/RichTextViewTests/RichTextImageTranscodeTests.swift
 //
-// Exercises the transcode path in RichTextImageLoading.embeddableBytes for a source that is neither PNG nor
-// JPEG (a real GIF), plus the alpha/size branches that pick PNG vs JPEG. PNG/JPEG sources are kept verbatim;
-// everything else is re-encoded once - PNG if transparent or small, JPEG only if opaque AND large.
+// The copy-embedding transcode (RichTextEmbeddedImage): turns an image's ORIGINAL bytes (handed back by the
+// AsyncImageCache store) into the RichTextInlineImage the RTF/HTML serializers embed. PNG/JPEG/GIF keep their
+// bytes (GIF also gets a still PNG frame for RTF); any other format is transcoded once by alpha/size. This
+// logic lives in RichText, not in the generic cache module.
 
 import XCTest
 @testable import RichTextView
@@ -18,8 +19,6 @@ final class RichTextImageTranscodeTests: XCTestCase {
     private func isPNG(_ data: Data) -> Bool { data.prefix(4).elementsEqual([0x89, 0x50, 0x4E, 0x47]) }
     private func isJPEG(_ data: Data) -> Bool { data.prefix(3).elementsEqual([0xFF, 0xD8, 0xFF]) }
 
-    // An opaque or translucent solid-color image at an exact pixel size, built via CoreGraphics so the alpha
-    // info the encoder sees is exactly what we asked for.
     private func makeImage(width: Int, height: Int, opaque: Bool) -> RTVImage {
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
         let alpha: CGImageAlphaInfo = opaque ? .noneSkipLast : .premultipliedLast
@@ -35,50 +34,55 @@ final class RichTextImageTranscodeTests: XCTestCase {
         #endif
     }
 
-    // A real (uncommon) source format: the classic 1x1 transparent GIF. A GIF is kept VERBATIM (so animated
-    // GIFs survive to HTML) - not flattened to PNG - and RTF cannot carry it.
-    func testGIFSourceIsKeptVerbatim() throws {
+    func testGIFKeptVerbatimWithStillPNG() throws {
         let gif = try XCTUnwrap(Data(base64Encoded: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"))
-        XCTAssertEqual(Array(gif.prefix(3)), [0x47, 0x49, 0x46], "fixture should be a GIF")   // 'G' 'I' 'F'
-        let image = try XCTUnwrap(RTVImage(data: gif), "GIF should decode on this platform")
-        let bytes = try XCTUnwrap(RichTextImageLoading.embeddableBytes(from: gif, decoded: image))
-        XCTAssertEqual(bytes.format, .gif, "GIF must be kept as GIF, not flattened")
-        XCTAssertEqual(bytes.data, gif, "the original GIF bytes must pass through unchanged")
-        XCTAssertNil(bytes.format.rtfBlip, "RTF's \\pict cannot carry GIF")
-        let still = try XCTUnwrap(bytes.stillPNG, "a still PNG frame should be produced for RTF")
-        XCTAssertTrue(isPNG(still), "the still frame should be real PNG bytes")
+        let inline = try XCTUnwrap(RichTextEmbeddedImage.make(from: gif, pixelSize: CGSize(width: 1, height: 1), maxWidth: 320))
+        XCTAssertEqual(inline.format, .gif, "GIF must be kept as GIF, not flattened")
+        XCTAssertEqual(inline.data, gif, "GIF bytes must pass through unchanged")
+        XCTAssertTrue(isPNG(try XCTUnwrap(inline.stillPNG)), "a real PNG still frame should be produced")
     }
 
     func testLargeOpaqueTranscodesToJPEG() throws {
-        let image = makeImage(width: 600, height: 600, opaque: true)   // > 512x512 -> photo-ish
-        let bytes = try XCTUnwrap(RichTextImageLoading.embeddableBytes(from: Data([0, 1, 2, 3]), decoded: image))
-        XCTAssertEqual(bytes.format, .jpeg, "opaque + large -> JPEG (compact)")
-        XCTAssertTrue(isJPEG(bytes.data), "output should be real JPEG bytes")
+        let inline = try XCTUnwrap(RichTextEmbeddedImage.transcode(data: Data([0, 1, 2, 3]),
+                                                                   decoded: makeImage(width: 600, height: 600, opaque: true),
+                                                                   display: CGSize(width: 300, height: 300)))
+        XCTAssertEqual(inline.format, .jpeg, "opaque + large -> JPEG")
+        XCTAssertTrue(isJPEG(inline.data))
+        XCTAssertNil(inline.stillPNG)
     }
 
     func testSmallOpaqueTranscodesToPNG() throws {
-        let image = makeImage(width: 16, height: 16, opaque: true)     // below the size threshold
-        let bytes = try XCTUnwrap(RichTextImageLoading.embeddableBytes(from: Data([0, 1, 2, 3]), decoded: image))
-        XCTAssertEqual(bytes.format, .png, "opaque but small (icon/graphic) -> PNG (crisp)")
-        XCTAssertTrue(isPNG(bytes.data))
+        let inline = try XCTUnwrap(RichTextEmbeddedImage.transcode(data: Data([0, 1, 2, 3]),
+                                                                   decoded: makeImage(width: 16, height: 16, opaque: true),
+                                                                   display: CGSize(width: 16, height: 16)))
+        XCTAssertEqual(inline.format, .png, "opaque but small -> PNG")
+        XCTAssertTrue(isPNG(inline.data))
     }
 
     func testTransparentTranscodesToPNGEvenWhenLarge() throws {
-        let image = makeImage(width: 600, height: 600, opaque: false)  // has alpha
-        let bytes = try XCTUnwrap(RichTextImageLoading.embeddableBytes(from: Data([0, 1, 2, 3]), decoded: image))
-        XCTAssertEqual(bytes.format, .png, "transparent -> PNG regardless of size (JPEG has no alpha)")
-        XCTAssertTrue(isPNG(bytes.data))
+        let inline = try XCTUnwrap(RichTextEmbeddedImage.transcode(data: Data([0, 1, 2, 3]),
+                                                                   decoded: makeImage(width: 600, height: 600, opaque: false),
+                                                                   display: CGSize(width: 300, height: 300)))
+        XCTAssertEqual(inline.format, .png, "transparent -> PNG regardless of size")
+        XCTAssertTrue(isPNG(inline.data))
     }
 
-    func testPNGAndJPEGSourcesPassThroughUnchanged() throws {
-        let image = makeImage(width: 8, height: 8, opaque: true)
+    func testPNGAndJPEGSourcesPassThroughWithoutDecode() throws {
         let png = Data([0x89, 0x50, 0x4E, 0x47] + [UInt8](repeating: 0, count: 8))
         let jpeg = Data([0xFF, 0xD8, 0xFF] + [UInt8](repeating: 0, count: 8))
-        let pngBytes = try XCTUnwrap(RichTextImageLoading.embeddableBytes(from: png, decoded: image))
-        let jpegBytes = try XCTUnwrap(RichTextImageLoading.embeddableBytes(from: jpeg, decoded: image))
-        XCTAssertEqual(pngBytes.format, .png)
-        XCTAssertEqual(pngBytes.data, png, "PNG source kept verbatim")
-        XCTAssertEqual(jpegBytes.format, .jpeg)
-        XCTAssertEqual(jpegBytes.data, jpeg, "JPEG source kept verbatim")
+        let size = CGSize(width: 40, height: 30)
+        let p = try XCTUnwrap(RichTextEmbeddedImage.make(from: png, pixelSize: size, maxWidth: 320))
+        let j = try XCTUnwrap(RichTextEmbeddedImage.make(from: jpeg, pixelSize: size, maxWidth: 320))
+        XCTAssertEqual(p.format, .png)
+        XCTAssertEqual(p.data, png, "PNG source kept verbatim (no decode of invalid bytes)")
+        XCTAssertEqual(j.format, .jpeg)
+        XCTAssertEqual(j.data, jpeg, "JPEG source kept verbatim (no decode of invalid bytes)")
+    }
+
+    func testDisplaySizeCapsToMaxWidthPreservingAspect() throws {
+        let png = Data([0x89, 0x50, 0x4E, 0x47] + [UInt8](repeating: 0, count: 8))
+        let inline = try XCTUnwrap(RichTextEmbeddedImage.make(from: png, pixelSize: CGSize(width: 800, height: 400), maxWidth: 320))
+        XCTAssertEqual(inline.displaySize.width, 320)
+        XCTAssertEqual(inline.displaySize.height, 160)   // 400 * (320 / 800)
     }
 }

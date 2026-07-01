@@ -9,10 +9,14 @@
 // images to the LIVE text storage and re-lays-out - which is why correctness does not depend on the
 // SwiftUI view (or its attributed string) being stable across updates.
 //
-// Attachments are real text-attachment characters, so images stay part of the one selectable text view
-// (copy still goes through the serializers - embedding image bytes on the pasteboard is a follow-up).
+// Attachments are real text-attachment characters, so images stay part of the one selectable text view.
+//
+// Image LOADING + CACHING (memory + disk, off-main decode/scale) is delegated to the reusable
+// AsyncImageCache.ImageStore; this file is only the RichText glue - the attachment, the placeholder, the copy
+// representation the serializers embed, and mapping text attachments to store load requests.
 
 import Foundation
+import AsyncImageCache
 
 #if canImport(AppKit)
 import AppKit
@@ -182,135 +186,26 @@ public struct RichTextInlineImage: Sendable {
 /// nil for everything, so callers that do not care about embedded images are unaffected.
 public typealias RichTextImageResolver = (String) -> RichTextInlineImage?
 
-/// The original bytes + format + natural size of a fetched image, cached for copy embedding. Keeping the
-/// ORIGINAL encoded bytes (rather than re-encoding the decoded image to PNG) is what keeps photos small:
-/// a JPEG stays a JPEG. A reference type because NSCache stores objects.
-final class RichTextCachedBytes {
-    let data: Data
-    let format: RichTextImageFormat
-    let naturalSize: CGSize
-    let stillPNG: Data?
-    init(data: Data, format: RichTextImageFormat, naturalSize: CGSize, stillPNG: Data? = nil) {
-        self.data = data
-        self.format = format
-        self.naturalSize = naturalSize
-        self.stillPNG = stillPNG
-    }
-}
-
 @MainActor
 enum RichTextImageLoading {
-    // NSCache is internally thread-safe, so it can be read from an attachment's init on any actor.
-    nonisolated(unsafe) private static let cache = NSCache<NSURL, RTVImage>()
-    nonisolated(unsafe) private static let bytesCache = NSCache<NSURL, RichTextCachedBytes>()
+    // Loading + caching (memory + disk, off-main decode) is delegated to AsyncImageCache.ImageStore. This
+    // enum is the glue that maps text attachments to store load requests and re-applies loaded images to the
+    // live text storage. `inFlight` avoids spawning redundant load Tasks (the store also de-duplicates).
     private static var inFlight = Set<URL>()
 
     nonisolated static func cachedImage(for url: URL) -> RTVImage? {
-        return cache.object(forKey: url as NSURL)
+        return ImageStore.shared.cachedImage(for: ImageRequest(url: url))
     }
 
     /// The embeddable bytes + format + display size of an already-loaded image, or nil if not loaded. Used by
-    /// the serializers to embed the picture in copied RTF/HTML. No decode/re-encode on this path - it returns
-    /// the cached original bytes (PNG/JPEG untouched; other formats were transcoded to PNG at fetch time).
+    /// the serializers to embed the picture in copied RTF/HTML - sourced from the store's original-bytes cache
+    /// (PNG/JPEG/GIF kept verbatim; other formats were transcoded once at load time).
     nonisolated static func cachedInlineImage(for url: URL, maxWidth: CGFloat = 320) -> RichTextInlineImage? {
-        guard let bytes = bytesCache.object(forKey: url as NSURL) else {
+        guard let original = ImageStore.shared.cachedOriginalBytes(for: url) else {
             return nil
         }
-        return RichTextInlineImage(data: bytes.data, format: bytes.format,
-                                   displaySize: cappedSize(bytes.naturalSize, maxWidth: maxWidth),
-                                   stillPNG: bytes.stillPNG)
-    }
-
-    // Opaque images with MORE pixels than this transcode to JPEG (photos); smaller opaque images stay PNG
-    // (icons / small graphics, where PNG is crisp and already small, and JPEG would add ringing on hard
-    // edges). ~0.25 MP (512x512). Transparent images are always PNG regardless of size (JPEG has no alpha).
-    nonisolated private static let opaqueJPEGThresholdPixels = 512 * 512
-
-    // Choose the embeddable encoding. Keep the ORIGINAL bytes for PNG / JPEG / GIF (detected by magic number)
-    // so photos stay small and animated GIFs stay animated. Anything else (HEIC/WebP/TIFF/BMP/...) is
-    // transcoded ONCE, at fetch time - PNG if it has alpha or is small, JPEG if it is opaque AND large (a
-    // photo). We never emit TIFF (the old macOS pasteboard default) - only PNG/JPEG/GIF travel.
-    // Internal (not private) so it can be unit-tested with an uncommon source format.
-    nonisolated static func embeddableBytes(from data: Data, decoded image: RTVImage) -> RichTextCachedBytes? {
-        if hasPrefix(data, [0x89, 0x50, 0x4E, 0x47]) {           // \x89 P N G
-            return RichTextCachedBytes(data: data, format: .png, naturalSize: image.size)
-        }
-        if hasPrefix(data, [0xFF, 0xD8, 0xFF]) {                 // JPEG SOI
-            return RichTextCachedBytes(data: data, format: .jpeg, naturalSize: image.size)
-        }
-        if hasPrefix(data, [0x47, 0x49, 0x46, 0x38]) {           // "GIF8" (87a / 89a)
-            // Keep the GIF verbatim for HTML (animation), plus a still PNG (the decoded frame) for RTF, which
-            // has no GIF blip - a static image beats none.
-            return RichTextCachedBytes(data: data, format: .gif, naturalSize: image.size, stillPNG: pngData(image))
-        }
-        let cg = cgImage(image)
-        let opaque = cg.map(isOpaque) ?? false                   // unknown -> treat as transparent (safe: PNG)
-        let pixels = cg.map { $0.width * $0.height } ?? 0
-        if opaque, pixels > opaqueJPEGThresholdPixels, let jpeg = jpegData(image) {
-            return RichTextCachedBytes(data: jpeg, format: .jpeg, naturalSize: image.size)
-        }
-        if let png = pngData(image) {
-            return RichTextCachedBytes(data: png, format: .png, naturalSize: image.size)
-        }
-        if let jpeg = jpegData(image) {
-            return RichTextCachedBytes(data: jpeg, format: .jpeg, naturalSize: image.size)
-        }
-        return nil   // could not produce PNG/JPEG - do not embed; copy falls back to the URL / alt text
-    }
-
-    nonisolated private static func hasPrefix(_ data: Data, _ bytes: [UInt8]) -> Bool {
-        guard data.count >= bytes.count else {
-            return false
-        }
-        return Array(data.prefix(bytes.count)) == bytes
-    }
-
-    nonisolated private static func cgImage(_ image: RTVImage) -> CGImage? {
-        #if canImport(UIKit)
-        return image.cgImage
-        #else
-        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        #endif
-    }
-
-    // Opaque = no (used) alpha channel; such images are safe to encode as JPEG.
-    nonisolated private static func isOpaque(_ cg: CGImage) -> Bool {
-        switch cg.alphaInfo {
-        case .none, .noneSkipFirst, .noneSkipLast:
-            return true
-        default:
-            return false
-        }
-    }
-
-    nonisolated private static func pngData(_ image: RTVImage) -> Data? {
-        #if canImport(UIKit)
-        return image.pngData()
-        #else
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
-            return nil
-        }
-        return rep.representation(using: .png, properties: [:])
-        #endif
-    }
-
-    nonisolated private static func jpegData(_ image: RTVImage, quality: CGFloat = 0.85) -> Data? {
-        #if canImport(UIKit)
-        return image.jpegData(compressionQuality: quality)
-        #else
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
-            return nil
-        }
-        return rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
-        #endif
-    }
-
-    nonisolated private static func cappedSize(_ size: CGSize, maxWidth: CGFloat) -> CGSize {
-        guard size.width > maxWidth, size.width > 0 else {
-            return size
-        }
-        let scale = maxWidth / size.width
-        return CGSize(width: maxWidth, height: (size.height * scale).rounded())
+        // Transcode lazily, from the cache's ORIGINAL bytes - the cache stays generic (no copy concerns).
+        return RichTextEmbeddedImage.make(from: original.data, pixelSize: original.pixelSize, maxWidth: maxWidth)
     }
 
     /// Apply any cached images to the not-yet-loaded image attachments in `content` (a rendered attributed
@@ -320,7 +215,8 @@ enum RichTextImageLoading {
         var changed = false
         content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
             guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil,
-                  let url = attachment.url, let image = cache.object(forKey: url as NSURL) else {
+                  let url = attachment.url,
+                  let image = ImageStore.shared.cachedImage(for: ImageRequest(url: url)) else {
                 return
             }
             attachment.setImage(image)
@@ -329,46 +225,37 @@ enum RichTextImageLoading {
         return changed
     }
 
-    /// Start fetching every not-yet-cached image URL in `content`. `reload` is called on the main actor
-    /// after each fetch completes (it should re-apply cached images to the live storage and re-lay-out).
+    /// Start loading every not-yet-cached image URL in `content`. `reload` is called on the main actor after
+    /// each load finishes (it should re-apply cached images to the live storage and re-lay-out).
     static func startLoading(in content: NSAttributedString, reload: @escaping @MainActor () -> Void) {
         applyCached(in: content)
         content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
             guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil,
-                  let url = attachment.url, cache.object(forKey: url as NSURL) == nil, !inFlight.contains(url) else {
+                  let url = attachment.url,
+                  ImageStore.shared.cachedImage(for: ImageRequest(url: url)) == nil,
+                  !inFlight.contains(url) else {
                 return
             }
             inFlight.insert(url)
             Task {
-                let image = await RichTextImageLoading.fetch(url)
+                let image = await load(url)
                 inFlight.remove(url)
-                if let image {
-                    cache.setObject(image, forKey: url as NSURL)
-                    attachment.setImage(image)
-                } else {
+                if image == nil {
                     attachment.markFailed()
                 }
+                applyCached(in: content)
                 reload()
             }
         }
     }
 
-    private nonisolated static func fetch(_ url: URL) async -> RTVImage? {
-        let data: Data?
-        switch url.scheme {
-        case "data", "file":
-            // data: URIs (base64) and local files decode without the network.
-            data = try? Data(contentsOf: url)
-        default:
-            data = try? await URLSession.shared.data(from: url).0
+    // Bridge the store's completion-based load into async so the surrounding Task stays on the main actor.
+    private static func load(_ url: URL) async -> RTVImage? {
+        return await withCheckedContinuation { continuation in
+            ImageStore.shared.load(ImageRequest(url: url)) { image in
+                continuation.resume(returning: image)
+            }
         }
-        guard let data, let image = RTVImage(data: data) else {
-            return nil
-        }
-        // Stash the embeddable bytes + format so copy can embed them without re-encoding (photos stay small).
-        if let bytes = embeddableBytes(from: data, decoded: image) {
-            bytesCache.setObject(bytes, forKey: url as NSURL)
-        }
-        return image
     }
+
 }
