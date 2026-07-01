@@ -378,7 +378,7 @@ private struct RichTextInlineParser {
 
     static func parse(_ text: String) -> [RichTextInline] {
         var parser = RichTextInlineParser(text)
-        return parser.parseRuns(stop: nil).nodes
+        return RichTextAutolinker.link(parser.parseRuns(stop: nil).nodes)
     }
 
     private mutating func parseRuns(stop: String?) -> (nodes: [RichTextInline], matched: Bool) {

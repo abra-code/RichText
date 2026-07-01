@@ -24,7 +24,9 @@ including the table.
 
 ## Inline
 
-`inline code`, **bold**, *italic*, ~~strikethrough~~, and a [link](https://www.swift.org).
+`inline code`, **bold**, *italic*, ~~strikethrough~~, and an explicit [link](https://www.swift.org).
+
+A bare URL autolinks too: visit https://swift.org or www.apple.com for more.
 
 ## Lists
 

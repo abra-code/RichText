@@ -47,4 +47,64 @@ final class RichTextMarkdownParserTests: XCTestCase {
     func testDocumentConvenience() {
         XCTAssertEqual(RichTextDocument(markdown: "# Hi").blocks, [.heading(level: 1, [.text("Hi")])])
     }
+
+    // MARK: - Autolinking
+
+    private func inlines(_ md: String) -> [RichTextInline] {
+        guard case .paragraph(let nodes)? = parse(md).first else {
+            return []
+        }
+        return nodes
+    }
+
+    func testAutolinkBareURL() {
+        let nodes = inlines("see https://swift.org now")
+        XCTAssertEqual(nodes.count, 3)
+        XCTAssertEqual(nodes.first, .text("see "))
+        XCTAssertEqual(nodes.last, .text(" now"))
+        guard case .link(let text, let url) = nodes[1] else {
+            return XCTFail("expected a link")
+        }
+        XCTAssertEqual(text.plainText, "https://swift.org")
+        XCTAssertTrue(url.contains("swift.org"), "url was \(url)")
+    }
+
+    func testAutolinkWWWGetsScheme() {
+        guard case .link(let text, let url)? = inlines("visit www.swift.org").last else {
+            return XCTFail("expected a link")
+        }
+        XCTAssertEqual(text.plainText, "www.swift.org")
+        XCTAssertTrue(url.hasPrefix("http"), "url was \(url)")
+    }
+
+    func testAutolinkExcludesTrailingPunctuation() {
+        let nodes = inlines("go to https://swift.org.")
+        XCTAssertEqual(nodes.last, .text("."))
+        guard case .link(let text, _) = nodes[1] else {
+            return XCTFail("expected a link")
+        }
+        XCTAssertEqual(text.plainText, "https://swift.org")
+    }
+
+    func testAutolinkInsideBold() {
+        guard case .strong(let children)? = inlines("**https://swift.org**").first,
+              case .link(let text, _)? = children.first else {
+            return XCTFail("expected a link inside strong")
+        }
+        XCTAssertEqual(text.plainText, "https://swift.org")
+    }
+
+    func testURLInCodeIsNotLinked() {
+        XCTAssertEqual(parse("`https://swift.org`"), [.paragraph([.code("https://swift.org")])])
+    }
+
+    func testExplicitLinkNotDoubleLinked() {
+        XCTAssertEqual(parse("[https://swift.org](https://swift.org)"),
+                       [.paragraph([.link(text: [.text("https://swift.org")], url: "https://swift.org")])])
+    }
+
+    func testPlainTextUnchanged() {
+        XCTAssertEqual(parse("just words, no links here"),
+                       [.paragraph([.text("just words, no links here")])])
+    }
 }
