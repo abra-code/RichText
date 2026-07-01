@@ -121,12 +121,45 @@ final class RichTextLayoutFragment: NSTextLayoutFragment {
 
     override func draw(at point: CGPoint, in context: CGContext) {
         let found = decorations
-        if found.any {
+        let pills = inlineCodeRects(at: point)
+        if found.any || !pills.isEmpty {
             withGraphicsContext(context) {
-                drawDecorations(found, at: point)
+                if found.any {
+                    drawDecorations(found, at: point)
+                }
+                for pill in pills {
+                    fillRoundedRect(pill, radius: 3, color: RTVColors.codeFill)
+                }
             }
         }
         super.draw(at: point, in: context)
+    }
+
+    // Rounded-pill rects for every inline-code run in this paragraph, one per line segment the run spans.
+    private func inlineCodeRects(at point: CGPoint) -> [CGRect] {
+        guard let paragraph = textElement as? NSTextParagraph, paragraph.attributedString.length > 0 else {
+            return []
+        }
+        let attributed = paragraph.attributedString
+        var rects: [CGRect] = []
+        attributed.enumerateAttribute(.rtvInlineCode, in: NSRange(location: 0, length: attributed.length)) { value, range, _ in
+            guard value != nil else {
+                return
+            }
+            for line in textLineFragments {
+                guard let hit = line.characterRange.intersection(range) else {
+                    continue
+                }
+                let startX = line.locationForCharacter(at: hit.location - line.characterRange.location).x
+                let endX = line.locationForCharacter(at: NSMaxRange(hit) - line.characterRange.location).x
+                let bounds = line.typographicBounds
+                rects.append(CGRect(x: point.x + bounds.minX + startX - 2,
+                                    y: point.y + bounds.minY - 1,
+                                    width: (endX - startX) + 4,
+                                    height: bounds.height + 2))
+            }
+        }
+        return rects
     }
 
     private func drawDecorations(_ found: Decorations, at point: CGPoint) {

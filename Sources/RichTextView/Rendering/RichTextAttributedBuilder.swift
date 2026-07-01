@@ -334,8 +334,10 @@ final class RichTextAttributedBuilder {
     }
 
     private func codeRun(_ s: String, strike: Bool, link: URL?, color: RTVColor) -> NSAttributedString {
+        // The pill is DRAWN by the painter (TK1 layout manager / TK2 fragment) keyed off .rtvInlineCode,
+        // instead of a flat .backgroundColor, so inline code gets rounded corners + a little padding.
         var attributes: [NSAttributedString.Key: Any] = [
-            .font: monoFont, .foregroundColor: link == nil ? color : RTVColors.link, .backgroundColor: RTVColors.codeFill,
+            .font: monoFont, .foregroundColor: link == nil ? color : RTVColors.link, .rtvInlineCode: true,
         ]
         if strike {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue

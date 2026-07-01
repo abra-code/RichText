@@ -82,6 +82,21 @@ final class RichTextLayoutManager: NSLayoutManager {
             strokeLine(from: CGPoint(x: box.minX, y: bottomY), to: CGPoint(x: box.maxX, y: bottomY),
                        width: 1, color: RTVColors.separator)
         }
+
+        // Inline-code pills: one rounded rect per line the run occupies (enumerateEnclosingRects splits a
+        // wrapped run across lines), drawn behind the glyphs with a little horizontal padding.
+        storage.enumerateAttribute(.rtvInlineCode, in: charRange) { value, range, _ in
+            guard value != nil else {
+                return
+            }
+            let glyphs = self.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            self.enumerateEnclosingRects(forGlyphRange: glyphs,
+                                         withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                                         in: container) { rect, _ in
+                let pill = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2, dy: -1)
+                fillRoundedRect(pill, radius: 3, color: RTVColors.codeFill)
+            }
+        }
     }
 
     /// Bounding rect of a marked character range, in text-container coordinates.

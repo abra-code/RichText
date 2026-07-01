@@ -27,6 +27,9 @@ extension NSAttributedString.Key {
     static let rtvQuoteBar = NSAttributedString.Key("rtv.quoteBar")
     /// Marks a table-row paragraph; value is a `RichTextTableRowInfo` describing the grid to draw.
     static let rtvTableRow = NSAttributedString.Key("rtv.tableRow")
+    /// Marks an inline-code run; the painter draws a rounded pill behind it (per line segment) instead of a
+    /// flat per-glyph background. Carries no block structure, so copy / serialization stay clean.
+    static let rtvInlineCode = NSAttributedString.Key("rtv.inlineCode")
 }
 
 /// Per-row table geometry the layout manager uses to draw the grid (T1: tab-stop rows + drawn borders).
