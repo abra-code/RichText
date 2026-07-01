@@ -326,6 +326,8 @@ final class RichTextAttributedBuilder {
                 out.append(renderInlines(children, base: base, bold: bold, italic: italic, strike: true, link: link, color: color))
             case .link(let children, let url):
                 out.append(renderInlines(children, base: base, bold: bold, italic: italic, strike: strike, link: URL(string: url) ?? link, color: color))
+            case .image(let alt, let url):
+                out.append(NSAttributedString(attachment: RichTextImageAttachment(alt: alt, url: URL(string: url))))
             }
         }
         return out

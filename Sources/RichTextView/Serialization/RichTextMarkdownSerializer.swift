@@ -91,6 +91,8 @@ public enum RichTextMarkdownSerializer {
                 out += "`" + s + "`"
             case .link(let c, let url):
                 out += "[" + inline(c) + "](" + url + ")"
+            case .image(let alt, let url):
+                out += "![" + alt + "](" + url + ")"
             case .lineBreak:
                 out += "  \n"
             }

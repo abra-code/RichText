@@ -48,12 +48,30 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextView {
         let (textView, owner) = RichTextAppKit.makeTextKit2View(attributed: attributed, metrics: metrics)
         context.coordinator.owner = owner
+        startImageLoading(textView)
         return textView
     }
 
     func updateNSView(_ textView: NSTextView, context: Context) {
         if RichTextAppKit.currentContent(of: textView)?.isEqual(to: attributed) == false {
             RichTextAppKit.setContent(attributed, on: textView)
+            textView.invalidateIntrinsicContentSize()
+            startImageLoading(textView)
+        }
+    }
+
+    // Fetch image attachments; when each arrives, re-apply cached images to the live content and re-lay-out.
+    private func startImageLoading(_ textView: NSTextView) {
+        guard let content = RichTextAppKit.currentContent(of: textView) else {
+            return
+        }
+        RichTextImageLoading.startLoading(in: content) { [weak textView] in
+            guard let textView, let content = RichTextAppKit.currentContent(of: textView),
+                  let layoutManager = textView.textLayoutManager else {
+                return
+            }
+            RichTextImageLoading.applyCached(in: content)
+            layoutManager.invalidateLayout(for: layoutManager.documentRange)
             textView.invalidateIntrinsicContentSize()
         }
     }
@@ -97,12 +115,29 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let (textView, owner) = RichTextUIKit.makeTextKit2View(attributed: attributed, metrics: metrics)
         context.coordinator.owner = owner
+        startImageLoading(textView)
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
         if RichTextUIKit.currentContent(of: textView)?.isEqual(to: attributed) == false {
             RichTextUIKit.setContent(attributed, on: textView)
+            textView.invalidateIntrinsicContentSize()
+            startImageLoading(textView)
+        }
+    }
+
+    private func startImageLoading(_ textView: UITextView) {
+        guard let content = RichTextUIKit.currentContent(of: textView) else {
+            return
+        }
+        RichTextImageLoading.startLoading(in: content) { [weak textView] in
+            guard let textView, let content = RichTextUIKit.currentContent(of: textView),
+                  let layoutManager = textView.textLayoutManager else {
+                return
+            }
+            RichTextImageLoading.applyCached(in: content)
+            layoutManager.invalidateLayout(for: layoutManager.documentRange)
             textView.invalidateIntrinsicContentSize()
         }
     }

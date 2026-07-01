@@ -42,6 +42,7 @@ public enum RichTextInline: Equatable, Sendable {
     case strikethrough([RichTextInline])
     case code(String)
     case link(text: [RichTextInline], url: String)
+    case image(alt: String, url: String)
     case lineBreak
 }
 
@@ -63,6 +64,8 @@ public extension Array where Element == RichTextInline {
                 out += children.plainText
             case .link(let children, _):
                 out += children.plainText
+            case .image(let alt, _):
+                out += alt
             }
         }
         return out

@@ -29,7 +29,7 @@ enum RichTextAutolinker {
                 return [.strong(apply(children, detector))]
             case .strikethrough(let children):
                 return [.strikethrough(apply(children, detector))]
-            case .code, .link, .lineBreak:
+            case .code, .link, .image, .lineBreak:
                 return [node]
             }
         }

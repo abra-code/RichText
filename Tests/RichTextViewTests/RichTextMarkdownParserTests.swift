@@ -146,4 +146,21 @@ final class RichTextMarkdownParserTests: XCTestCase {
         XCTAssertEqual(parse("```\n[ref]: https://swift.org\n```"),
                        [.codeBlock(language: nil, code: "[ref]: https://swift.org")])
     }
+
+    // MARK: - Images
+
+    func testImage() {
+        XCTAssertEqual(inlines("before ![a cat](https://x.test/cat.png) after"),
+                       [.text("before "), .image(alt: "a cat", url: "https://x.test/cat.png"), .text(" after")])
+    }
+
+    func testImageVsLink() {
+        // A leading '!' distinguishes an image from a link.
+        XCTAssertEqual(inlines("![alt](u)"), [.image(alt: "alt", url: "u")])
+        XCTAssertEqual(inlines("[alt](u)"), [.link(text: [.text("alt")], url: "u")])
+    }
+
+    func testBangWithoutImageIsLiteral() {
+        XCTAssertEqual(inlines("hi! there"), [.text("hi! there")])
+    }
 }

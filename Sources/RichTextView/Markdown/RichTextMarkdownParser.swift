@@ -494,6 +494,14 @@ private struct RichTextInlineParser {
                     buffer.append(c)
                     pos += 1
                 }
+            case "!":
+                if let node = parseImage() {
+                    flush()
+                    nodes.append(node)
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
             case "[":
                 if let node = parseLink() {
                     flush()
@@ -525,6 +533,48 @@ private struct RichTextInlineParser {
 
     private func isEscapable(_ c: Character) -> Bool {
         return "\\`*_{}[]()#+-.!~>|\"".contains(c)
+    }
+
+    // ![alt](url) - the alt text is taken literally (image alt is plain text).
+    private mutating func parseImage() -> RichTextInline? {
+        let start = pos
+        guard pos + 1 < chars.count, chars[pos + 1] == "[" else {
+            return nil
+        }
+        pos += 2   // consume '!['
+        var alt = ""
+        while pos < chars.count, chars[pos] != "]" {
+            alt.append(chars[pos])
+            pos += 1
+        }
+        guard pos < chars.count, chars[pos] == "]", pos + 1 < chars.count, chars[pos + 1] == "(" else {
+            pos = start
+            return nil
+        }
+        pos += 2   // consume ']('
+        var url = ""
+        var depth = 1
+        while pos < chars.count {
+            let c = chars[pos]
+            if c == "(" {
+                depth += 1
+                url.append(c)
+                pos += 1
+            } else if c == ")" {
+                depth -= 1
+                if depth == 0 {
+                    pos += 1
+                    return .image(alt: alt, url: url.trimmingCharacters(in: .whitespaces))
+                }
+                url.append(c)
+                pos += 1
+            } else {
+                url.append(c)
+                pos += 1
+            }
+        }
+        pos = start
+        return nil
     }
 
     private mutating func parseCodeSpan() -> RichTextInline? {

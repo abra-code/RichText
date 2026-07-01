@@ -125,6 +125,8 @@ public enum RichTextHTMLSerializer {
                 out += "<code style=\"\(CSS.inlineCode)\">" + escape(s) + "</code>"
             case .link(let c, let url):
                 out += "<a href=\"" + escapeAttribute(url) + "\" style=\"\(CSS.anchor)\">" + inline(c) + "</a>"
+            case .image(let alt, let url):
+                out += "<img src=\"" + escapeAttribute(url) + "\" alt=\"" + escapeAttribute(alt) + "\" style=\"max-width:100%\">"
             case .lineBreak:
                 out += "<br>"
             }

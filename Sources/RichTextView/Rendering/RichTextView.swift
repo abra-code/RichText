@@ -109,13 +109,30 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
             .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand,
         ]
+        startImageLoading(textView, stack)
         return textView
     }
 
     func updateNSView(_ textView: NSTextView, context: Context) {
-        let storage = context.coordinator.storage
-        if !storage.isEqual(to: attributed) {
-            storage.setAttributedString(attributed)
+        let stack = context.coordinator
+        if !stack.storage.isEqual(to: attributed) {
+            stack.storage.setAttributedString(attributed)
+            textView.invalidateIntrinsicContentSize()
+            startImageLoading(textView, stack)
+        }
+    }
+
+    // Fetch image attachments; when each arrives, re-apply cached images to the LIVE storage and re-lay-out
+    // (the attachment's placeholder size grows to the image size). Runs against stack.storage, not the
+    // captured `attributed`, so it is correct even if SwiftUI rebuilt the view with a new attributed string.
+    private func startImageLoading(_ textView: NSTextView, _ stack: TextKitStack) {
+        RichTextImageLoading.startLoading(in: stack.storage) { [weak textView, weak stack] in
+            guard let textView, let stack else {
+                return
+            }
+            RichTextImageLoading.applyCached(in: stack.storage)
+            stack.layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: stack.storage.length),
+                                                 actualCharacterRange: nil)
             textView.invalidateIntrinsicContentSize()
         }
     }
@@ -151,13 +168,28 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.adjustsFontForContentSizeCategory = true
         textView.linkTextAttributes = [.foregroundColor: UIColor.link]
+        startImageLoading(textView, stack)
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        let storage = context.coordinator.storage
-        if !storage.isEqual(to: attributed) {
-            storage.setAttributedString(attributed)
+        let stack = context.coordinator
+        if !stack.storage.isEqual(to: attributed) {
+            stack.storage.setAttributedString(attributed)
+            textView.invalidateIntrinsicContentSize()
+            startImageLoading(textView, stack)
+        }
+    }
+
+    // See the AppKit twin: reload against the LIVE storage so it survives view/attributed rebuilds.
+    private func startImageLoading(_ textView: UITextView, _ stack: TextKitStack) {
+        RichTextImageLoading.startLoading(in: stack.storage) { [weak textView, weak stack] in
+            guard let textView, let stack else {
+                return
+            }
+            RichTextImageLoading.applyCached(in: stack.storage)
+            stack.layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: stack.storage.length),
+                                                 actualCharacterRange: nil)
             textView.invalidateIntrinsicContentSize()
         }
     }

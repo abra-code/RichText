@@ -149,6 +149,9 @@ public enum RichTextRTFSerializer {
                 out += "\\f1 " + escape(s) + "\\f0 "
             case .link(let c, let url):
                 out += "{\\field{\\*\\fldinst{HYPERLINK \"" + escape(url) + "\"}}{\\fldrslt " + inline(c) + "}}"
+            case .image(let alt, _):
+                // Embedding image bytes (\pict / RTFD) is a copy-fidelity follow-up; emit the alt text.
+                out += escape(alt.isEmpty ? "[image]" : alt)
             case .lineBreak:
                 out += "\\line "
             }

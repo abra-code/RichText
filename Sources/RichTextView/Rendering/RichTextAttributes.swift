@@ -11,10 +11,12 @@ import Foundation
 import AppKit
 public typealias RTVFont = NSFont
 public typealias RTVColor = NSColor
+public typealias RTVImage = NSImage
 #elseif canImport(UIKit)
 import UIKit
 public typealias RTVFont = UIFont
 public typealias RTVColor = UIColor
+public typealias RTVImage = UIImage
 #endif
 
 extension NSAttributedString.Key {
@@ -49,7 +51,7 @@ final class RichTextTableRowInfo {
 }
 
 /// Visual metrics + colors. Cross-platform; `NSColor` and `UIColor` name semantic colors differently.
-public struct RichTextTheme: Sendable {
+public struct RichTextTheme: Sendable, Equatable {
     public var baseFontSize: CGFloat?      // nil => Dynamic Type body
     public var indentStep: CGFloat
     public var blockSpacing: CGFloat
