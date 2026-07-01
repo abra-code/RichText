@@ -28,11 +28,16 @@ public struct RichText: View {
     private let attributed: NSAttributedString
     private let engine: RichTextEngine
     private let metrics: RichTextDecorationMetrics
+    // The VoiceOver reading of the whole document, built from the model (see RichTextAccessibility): images
+    // speak their alt text, tables read row by row - neither of which is recoverable from the glyph stream of
+    // the single rendered text view.
+    private let accessibilityText: String
 
     public init(_ document: RichTextDocument, theme: RichTextTheme = .default, engine: RichTextEngine = .textKit1) {
         self.engine = engine
         self.attributed = RichTextAttributedString.make(document, theme: theme, engine: engine)
         self.metrics = RichTextDecorationMetrics(codeCornerRadius: theme.codeCornerRadius)
+        self.accessibilityText = RichTextAccessibility.label(for: document)
     }
 
     public init(markdown: String, theme: RichTextTheme = .default, engine: RichTextEngine = .textKit1) {
@@ -43,11 +48,19 @@ public struct RichText: View {
         self.engine = engine
         self.attributed = attributed
         self.metrics = RichTextDecorationMetrics()
+        // No model to linearize here; fall back to the raw text with attachment placeholders (U+FFFC) stripped.
+        self.accessibilityText = attributed.string
+            .replacingOccurrences(of: "\u{FFFC}", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public var body: some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Render the whole document as ONE static-text element reading `accessibilityText`, ignoring the
+            // text view's own accessibility (which would skip image alt text and run table columns together).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText)
     }
 
     @ViewBuilder
