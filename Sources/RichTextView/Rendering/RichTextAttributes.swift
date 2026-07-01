@@ -119,8 +119,23 @@ enum RTVFonts {
         return .preferredFont(forTextStyle: .body)
     }
 
-    static func monospaced(_ size: CGFloat) -> RTVFont {
-        return .monospacedSystemFont(ofSize: size, weight: .regular)
+    /// The monospaced font for code. When `bodySize` is nil (Dynamic Type mode) it scales with the system
+    /// text size the way the body font does - on iOS a UIFontMetrics-scaled font (so it also tracks LIVE
+    /// content-size changes via adjustsFontForContentSizeCategory), sized off the DEFAULT body point size
+    /// to avoid double-scaling. When `bodySize` is a pinned value the font is a fixed size too.
+    static func monospaced(bodySize: CGFloat?, scale: CGFloat = 0.94) -> RTVFont {
+        #if canImport(UIKit)
+        if let bodySize {
+            return UIFont.monospacedSystemFont(ofSize: bodySize * scale, weight: .regular)
+        }
+        let defaultBody = UIFont.preferredFont(forTextStyle: .body,
+                                               compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
+        let base = UIFont.monospacedSystemFont(ofSize: defaultBody * scale, weight: .regular)
+        return UIFontMetrics(forTextStyle: .body).scaledFont(for: base)
+        #else
+        let size = (bodySize ?? NSFont.preferredFont(forTextStyle: .body).pointSize) * scale
+        return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        #endif
     }
 
     static func heading(_ level: Int) -> RTVFont {

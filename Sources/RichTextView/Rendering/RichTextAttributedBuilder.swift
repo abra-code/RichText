@@ -39,7 +39,9 @@ final class RichTextAttributedBuilder {
         self.engine = engine
         self.bodyFont = RTVFonts.body(theme.baseFontSize)
         self.baseSize = bodyFont.pointSize
-        self.monoFont = RTVFonts.monospaced(bodyFont.pointSize * 0.94)
+        // nil baseFontSize => Dynamic Type: the mono font scales with the system text size like the body
+        // and headings already do (previously it was a fixed size and stayed small at large text sizes).
+        self.monoFont = RTVFonts.monospaced(bodySize: theme.baseFontSize)
     }
 
     func build(_ blocks: [RichTextBlock]) -> NSAttributedString {
