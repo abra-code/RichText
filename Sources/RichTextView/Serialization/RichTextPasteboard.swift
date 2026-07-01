@@ -19,8 +19,13 @@ public enum RichTextPasteboard {
 
     /// Replaces the general pasteboard contents with RTF + HTML + Markdown representations of `document`.
     public static func write(_ document: RichTextDocument) {
-        let rtf = RichTextRTFSerializer.data(from: document)
-        let html = RichTextHTMLSerializer.document(from: document)
+        // Embed already-loaded images (from the shared cache) so pictures survive paste into rich editors;
+        // images not yet loaded fall back to their URL / alt text.
+        let images: RichTextImageResolver = { urlString in
+            URL(string: urlString).flatMap { RichTextImageLoading.cachedInlineImage(for: $0) }
+        }
+        let rtf = RichTextRTFSerializer.data(from: document, images: images)
+        let html = RichTextHTMLSerializer.document(from: document, images: images)
         let markdown = RichTextMarkdownSerializer.string(from: document)
 
         #if canImport(AppKit)

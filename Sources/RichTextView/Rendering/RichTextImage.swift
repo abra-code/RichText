@@ -131,14 +131,186 @@ final class RichTextImageAttachment: NSTextAttachment {
 /// Loads and caches images for the attachments in a rendered document. Stateless from the view's point of
 /// view: the cache is process-wide and the reload closure operates on the live text storage, so it does
 /// not matter how often SwiftUI rebuilds the view or its attributed string.
+/// An embeddable image encoding whose ORIGINAL bytes travel unchanged. PNG and JPEG go into both RTF
+/// (\pngblip / \jpegblip) and HTML (data: URIs). GIF goes into HTML only - RTF's \pict has no GIF blip - but
+/// it is kept verbatim so ANIMATED GIFs survive to HTML targets rather than being flattened to a still PNG.
+/// (Other source formats are transcoded to PNG/JPEG on the way in.)
+public enum RichTextImageFormat: Sendable {
+    case png
+    case jpeg
+    case gif
+
+    public var mimeType: String {
+        switch self {
+        case .png: return "image/png"
+        case .jpeg: return "image/jpeg"
+        case .gif: return "image/gif"
+        }
+    }
+
+    /// The RTF \pict blip control word, or nil if RTF cannot carry this format (GIF).
+    var rtfBlip: String? {
+        switch self {
+        case .png: return "\\pngblip"
+        case .jpeg: return "\\jpegblip"
+        case .gif: return nil
+        }
+    }
+}
+
+/// The (original) bytes + format + intended display size of a loaded image, used to embed it into copied
+/// RTF / HTML so the picture survives paste into other rich editors (a loaded image only - unloaded ones
+/// fall back to the URL / alt text).
+public struct RichTextInlineImage: Sendable {
+    public let data: Data            // original encoded bytes (not re-encoded for PNG/JPEG/GIF)
+    public let format: RichTextImageFormat
+    public let displaySize: CGSize   // points, capped to the on-screen max width
+    /// A still PNG frame for consumers that cannot carry `format` (RTF with a GIF): a static image beats
+    /// none. nil when `format` is embeddable everywhere (PNG/JPEG).
+    public let stillPNG: Data?
+
+    public init(data: Data, format: RichTextImageFormat, displaySize: CGSize, stillPNG: Data? = nil) {
+        self.data = data
+        self.format = format
+        self.displaySize = displaySize
+        self.stillPNG = stillPNG
+    }
+}
+
+/// Resolves an image URL to its loaded bytes, for embedding in copied RTF/HTML. Returns nil for images that
+/// are not loaded (they fall back to the URL / alt text). The serializers default to a resolver that returns
+/// nil for everything, so callers that do not care about embedded images are unaffected.
+public typealias RichTextImageResolver = (String) -> RichTextInlineImage?
+
+/// The original bytes + format + natural size of a fetched image, cached for copy embedding. Keeping the
+/// ORIGINAL encoded bytes (rather than re-encoding the decoded image to PNG) is what keeps photos small:
+/// a JPEG stays a JPEG. A reference type because NSCache stores objects.
+final class RichTextCachedBytes {
+    let data: Data
+    let format: RichTextImageFormat
+    let naturalSize: CGSize
+    let stillPNG: Data?
+    init(data: Data, format: RichTextImageFormat, naturalSize: CGSize, stillPNG: Data? = nil) {
+        self.data = data
+        self.format = format
+        self.naturalSize = naturalSize
+        self.stillPNG = stillPNG
+    }
+}
+
 @MainActor
 enum RichTextImageLoading {
     // NSCache is internally thread-safe, so it can be read from an attachment's init on any actor.
     nonisolated(unsafe) private static let cache = NSCache<NSURL, RTVImage>()
+    nonisolated(unsafe) private static let bytesCache = NSCache<NSURL, RichTextCachedBytes>()
     private static var inFlight = Set<URL>()
 
     nonisolated static func cachedImage(for url: URL) -> RTVImage? {
         return cache.object(forKey: url as NSURL)
+    }
+
+    /// The embeddable bytes + format + display size of an already-loaded image, or nil if not loaded. Used by
+    /// the serializers to embed the picture in copied RTF/HTML. No decode/re-encode on this path - it returns
+    /// the cached original bytes (PNG/JPEG untouched; other formats were transcoded to PNG at fetch time).
+    nonisolated static func cachedInlineImage(for url: URL, maxWidth: CGFloat = 320) -> RichTextInlineImage? {
+        guard let bytes = bytesCache.object(forKey: url as NSURL) else {
+            return nil
+        }
+        return RichTextInlineImage(data: bytes.data, format: bytes.format,
+                                   displaySize: cappedSize(bytes.naturalSize, maxWidth: maxWidth),
+                                   stillPNG: bytes.stillPNG)
+    }
+
+    // Opaque images with MORE pixels than this transcode to JPEG (photos); smaller opaque images stay PNG
+    // (icons / small graphics, where PNG is crisp and already small, and JPEG would add ringing on hard
+    // edges). ~0.25 MP (512x512). Transparent images are always PNG regardless of size (JPEG has no alpha).
+    nonisolated private static let opaqueJPEGThresholdPixels = 512 * 512
+
+    // Choose the embeddable encoding. Keep the ORIGINAL bytes for PNG / JPEG / GIF (detected by magic number)
+    // so photos stay small and animated GIFs stay animated. Anything else (HEIC/WebP/TIFF/BMP/...) is
+    // transcoded ONCE, at fetch time - PNG if it has alpha or is small, JPEG if it is opaque AND large (a
+    // photo). We never emit TIFF (the old macOS pasteboard default) - only PNG/JPEG/GIF travel.
+    // Internal (not private) so it can be unit-tested with an uncommon source format.
+    nonisolated static func embeddableBytes(from data: Data, decoded image: RTVImage) -> RichTextCachedBytes? {
+        if hasPrefix(data, [0x89, 0x50, 0x4E, 0x47]) {           // \x89 P N G
+            return RichTextCachedBytes(data: data, format: .png, naturalSize: image.size)
+        }
+        if hasPrefix(data, [0xFF, 0xD8, 0xFF]) {                 // JPEG SOI
+            return RichTextCachedBytes(data: data, format: .jpeg, naturalSize: image.size)
+        }
+        if hasPrefix(data, [0x47, 0x49, 0x46, 0x38]) {           // "GIF8" (87a / 89a)
+            // Keep the GIF verbatim for HTML (animation), plus a still PNG (the decoded frame) for RTF, which
+            // has no GIF blip - a static image beats none.
+            return RichTextCachedBytes(data: data, format: .gif, naturalSize: image.size, stillPNG: pngData(image))
+        }
+        let cg = cgImage(image)
+        let opaque = cg.map(isOpaque) ?? false                   // unknown -> treat as transparent (safe: PNG)
+        let pixels = cg.map { $0.width * $0.height } ?? 0
+        if opaque, pixels > opaqueJPEGThresholdPixels, let jpeg = jpegData(image) {
+            return RichTextCachedBytes(data: jpeg, format: .jpeg, naturalSize: image.size)
+        }
+        if let png = pngData(image) {
+            return RichTextCachedBytes(data: png, format: .png, naturalSize: image.size)
+        }
+        if let jpeg = jpegData(image) {
+            return RichTextCachedBytes(data: jpeg, format: .jpeg, naturalSize: image.size)
+        }
+        return nil   // could not produce PNG/JPEG - do not embed; copy falls back to the URL / alt text
+    }
+
+    nonisolated private static func hasPrefix(_ data: Data, _ bytes: [UInt8]) -> Bool {
+        guard data.count >= bytes.count else {
+            return false
+        }
+        return Array(data.prefix(bytes.count)) == bytes
+    }
+
+    nonisolated private static func cgImage(_ image: RTVImage) -> CGImage? {
+        #if canImport(UIKit)
+        return image.cgImage
+        #else
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        #endif
+    }
+
+    // Opaque = no (used) alpha channel; such images are safe to encode as JPEG.
+    nonisolated private static func isOpaque(_ cg: CGImage) -> Bool {
+        switch cg.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return true
+        default:
+            return false
+        }
+    }
+
+    nonisolated private static func pngData(_ image: RTVImage) -> Data? {
+        #if canImport(UIKit)
+        return image.pngData()
+        #else
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
+            return nil
+        }
+        return rep.representation(using: .png, properties: [:])
+        #endif
+    }
+
+    nonisolated private static func jpegData(_ image: RTVImage, quality: CGFloat = 0.85) -> Data? {
+        #if canImport(UIKit)
+        return image.jpegData(compressionQuality: quality)
+        #else
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
+            return nil
+        }
+        return rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
+        #endif
+    }
+
+    nonisolated private static func cappedSize(_ size: CGSize, maxWidth: CGFloat) -> CGSize {
+        guard size.width > maxWidth, size.width > 0 else {
+            return size
+        }
+        let scale = maxWidth / size.width
+        return CGSize(width: maxWidth, height: (size.height * scale).rounded())
     }
 
     /// Apply any cached images to the not-yet-loaded image attachments in `content` (a rendered attributed
@@ -182,15 +354,21 @@ enum RichTextImageLoading {
     }
 
     private nonisolated static func fetch(_ url: URL) async -> RTVImage? {
+        let data: Data?
         switch url.scheme {
         case "data", "file":
             // data: URIs (base64) and local files decode without the network.
-            return (try? Data(contentsOf: url)).flatMap { RTVImage(data: $0) }
+            data = try? Data(contentsOf: url)
         default:
-            guard let (data, _) = try? await URLSession.shared.data(from: url) else {
-                return nil
-            }
-            return RTVImage(data: data)
+            data = try? await URLSession.shared.data(from: url).0
         }
+        guard let data, let image = RTVImage(data: data) else {
+            return nil
+        }
+        // Stash the embeddable bytes + format so copy can embed them without re-encoding (photos stay small).
+        if let bytes = embeddableBytes(from: data, decoded: image) {
+            bytesCache.setObject(bytes, forKey: url as NSURL)
+        }
+        return image
     }
 }
