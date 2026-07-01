@@ -24,10 +24,73 @@ public enum RichTextMarkdownParser {
         let normalized = source
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        return parseBlocks(normalized.components(separatedBy: "\n"))
+        var lines = normalized.components(separatedBy: "\n")
+        let references = extractLinkReferences(&lines)
+        return parseBlocks(lines, references: references)
     }
 
-    static func parseBlocks(_ lines: [String]) -> [RichTextBlock] {
+    // MARK: Link reference definitions
+
+    // Pulls "[label]: url [optional title]" definition lines out of the document (they render nothing) and
+    // returns a label -> url map used to resolve reference-style links. Lines inside a fenced code block
+    // are left alone.
+    private static func extractLinkReferences(_ lines: inout [String]) -> [String: String] {
+        var references: [String: String] = [:]
+        var kept: [String] = []
+        var inFence = false
+        var fenceMarker = ""
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if inFence {
+                kept.append(line)
+                if trimmed.hasPrefix(fenceMarker) {
+                    inFence = false
+                }
+                continue
+            }
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                inFence = true
+                fenceMarker = String(trimmed.prefix(3))
+                kept.append(line)
+                continue
+            }
+            if let definition = parseLinkReferenceDefinition(line) {
+                if references[definition.label] == nil {
+                    references[definition.label] = definition.url
+                }
+                continue   // drop the definition line
+            }
+            kept.append(line)
+        }
+        lines = kept
+        return references
+    }
+
+    private static func parseLinkReferenceDefinition(_ line: String) -> (label: String, url: String)? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("["), let close = trimmed.firstIndex(of: "]") else {
+            return nil
+        }
+        let afterClose = trimmed.index(after: close)
+        guard afterClose < trimmed.endIndex, trimmed[afterClose] == ":" else {
+            return nil
+        }
+        let label = String(trimmed[trimmed.index(after: trimmed.startIndex)..<close]).trimmingCharacters(in: .whitespaces)
+        guard !label.isEmpty else {
+            return nil
+        }
+        let rest = String(trimmed[trimmed.index(after: afterClose)...]).trimmingCharacters(in: .whitespaces)
+        guard !rest.isEmpty else {
+            return nil
+        }
+        var url = rest.split(separator: " ", maxSplits: 1).first.map(String.init) ?? rest
+        if url.hasPrefix("<"), url.hasSuffix(">") {
+            url = String(url.dropFirst().dropLast())
+        }
+        return (label.lowercased(), url)
+    }
+
+    static func parseBlocks(_ lines: [String], references: [String: String] = [:]) -> [RichTextBlock] {
         var blocks: [RichTextBlock] = []
         var i = 0
         while i < lines.count {
@@ -45,24 +108,24 @@ public enum RichTextMarkdownParser {
                 i += 1
                 continue
             }
-            if let heading = parseHeading(line) {
+            if let heading = parseHeading(line, references: references) {
                 blocks.append(heading)
                 i += 1
                 continue
             }
             if isBlockQuote(line) {
-                blocks.append(parseBlockQuote(lines, &i))
+                blocks.append(parseBlockQuote(lines, &i, references: references))
                 continue
             }
-            if let table = parseTable(lines, &i) {
+            if let table = parseTable(lines, &i, references: references) {
                 blocks.append(table)
                 continue
             }
             if listItemMatch(line) != nil {
-                blocks.append(parseList(lines, &i))
+                blocks.append(parseList(lines, &i, references: references))
                 continue
             }
-            blocks.append(parseParagraph(lines, &i))
+            blocks.append(parseParagraph(lines, &i, references: references))
         }
         return blocks
     }
@@ -111,7 +174,7 @@ public enum RichTextMarkdownParser {
 
     // MARK: Headings / rules
 
-    private static func parseHeading(_ line: String) -> RichTextBlock? {
+    private static func parseHeading(_ line: String, references: [String: String] = [:]) -> RichTextBlock? {
         let trimmed = line.drop(while: { $0 == " " })
         let level = trimmed.prefix(while: { $0 == "#" }).count
         if level < 1 || level > 6 {
@@ -123,7 +186,7 @@ public enum RichTextMarkdownParser {
         }
         var content = rest.trimmingCharacters(in: .whitespaces)
         content = content.replacingOccurrences(of: "\\s*#+\\s*$", with: "", options: .regularExpression)
-        return .heading(level: level, RichTextInlineParser.parse(content))
+        return .heading(level: level, RichTextInlineParser.parse(content, references: references))
     }
 
     private static func isThematicBreak(_ line: String) -> Bool {
@@ -144,7 +207,7 @@ public enum RichTextMarkdownParser {
         return line.drop(while: { $0 == " " }).first == ">"
     }
 
-    private static func parseBlockQuote(_ lines: [String], _ i: inout Int) -> RichTextBlock {
+    private static func parseBlockQuote(_ lines: [String], _ i: inout Int, references: [String: String] = [:]) -> RichTextBlock {
         var inner: [String] = []
         while i < lines.count {
             let stripped = lines[i].drop(while: { $0 == " " })
@@ -159,7 +222,7 @@ public enum RichTextMarkdownParser {
                 break
             }
         }
-        return .blockQuote(parseBlocks(inner))
+        return .blockQuote(parseBlocks(inner, references: references))
     }
 
     // MARK: Lists
@@ -209,7 +272,7 @@ public enum RichTextMarkdownParser {
         return nil
     }
 
-    private static func parseList(_ lines: [String], _ i: inout Int) -> RichTextBlock {
+    private static func parseList(_ lines: [String], _ i: inout Int, references: [String: String] = [:]) -> RichTextBlock {
         let first = listItemMatch(lines[i])!
         let ordered = first.ordered
         let baseIndent = first.indent
@@ -260,7 +323,7 @@ public enum RichTextMarkdownParser {
                     i += 1
                 }
             }
-            items.append(parseBlocks(itemLines))
+            items.append(parseBlocks(itemLines, references: references))
         }
 
         return .list(ordered: ordered, start: first.start, tight: !loose, items: items)
@@ -268,11 +331,11 @@ public enum RichTextMarkdownParser {
 
     // MARK: Tables (GFM)
 
-    private static func parseTable(_ lines: [String], _ i: inout Int) -> RichTextBlock? {
+    private static func parseTable(_ lines: [String], _ i: inout Int, references: [String: String] = [:]) -> RichTextBlock? {
         guard lines[i].contains("|"), (i + 1) < lines.count, isTableDelimiter(lines[i + 1]) else {
             return nil
         }
-        let headers = splitTableRow(lines[i]).map { RichTextInlineParser.parse($0) }
+        let headers = splitTableRow(lines[i]).map { RichTextInlineParser.parse($0, references: references) }
         let alignments = parseAlignments(lines[i + 1])
         var rows: [[[RichTextInline]]] = []
         var j = i + 2
@@ -281,7 +344,7 @@ public enum RichTextMarkdownParser {
             if line.trimmingCharacters(in: .whitespaces).isEmpty || !line.contains("|") {
                 break
             }
-            rows.append(splitTableRow(line).map { RichTextInlineParser.parse($0) })
+            rows.append(splitTableRow(line).map { RichTextInlineParser.parse($0, references: references) })
             j += 1
         }
         i = j
@@ -329,7 +392,7 @@ public enum RichTextMarkdownParser {
 
     // MARK: Paragraph
 
-    private static func parseParagraph(_ lines: [String], _ i: inout Int) -> RichTextBlock {
+    private static func parseParagraph(_ lines: [String], _ i: inout Int, references: [String: String] = [:]) -> RichTextBlock {
         var collected: [String] = []
         while i < lines.count {
             let line = lines[i]
@@ -346,7 +409,7 @@ public enum RichTextMarkdownParser {
             collected.append(line)
             i += 1
         }
-        return .paragraph(RichTextInlineParser.parse(joinParagraph(collected)))
+        return .paragraph(RichTextInlineParser.parse(joinParagraph(collected), references: references))
     }
 
     private static func joinParagraph(_ lines: [String]) -> String {
@@ -371,13 +434,15 @@ public enum RichTextMarkdownParser {
 private struct RichTextInlineParser {
     private let chars: [Character]
     private var pos = 0
+    private let references: [String: String]
 
-    private init(_ text: String) {
+    private init(_ text: String, _ references: [String: String]) {
         self.chars = Array(text)
+        self.references = references
     }
 
-    static func parse(_ text: String) -> [RichTextInline] {
-        var parser = RichTextInlineParser(text)
+    static func parse(_ text: String, references: [String: String] = [:]) -> [RichTextInline] {
+        var parser = RichTextInlineParser(text, references)
         return RichTextAutolinker.link(parser.parseRuns(stop: nil).nodes)
     }
 
@@ -541,34 +606,67 @@ private struct RichTextInlineParser {
 
     private mutating func parseLink() -> RichTextInline? {
         let start = pos
-        pos += 1
+        pos += 1                              // consume '['
+        let labelStart = pos
         let text = parseRuns(stop: "]")
-        guard text.matched, pos < chars.count, chars[pos] == "(" else {
+        guard text.matched else {
             pos = start
             return nil
         }
-        pos += 1
-        var url = ""
-        var depth = 1
-        while pos < chars.count {
-            let c = chars[pos]
-            if c == "(" {
-                depth += 1
-                url.append(c)
-                pos += 1
-            } else if c == ")" {
-                depth -= 1
-                if depth == 0 {
+        let labelString = String(chars[labelStart..<(pos - 1)])   // raw label ('pos' is past the ']')
+
+        // Inline link: [text](url)
+        if pos < chars.count, chars[pos] == "(" {
+            pos += 1
+            var url = ""
+            var depth = 1
+            while pos < chars.count {
+                let c = chars[pos]
+                if c == "(" {
+                    depth += 1
+                    url.append(c)
                     pos += 1
-                    return .link(text: text.nodes, url: url.trimmingCharacters(in: .whitespaces))
+                } else if c == ")" {
+                    depth -= 1
+                    if depth == 0 {
+                        pos += 1
+                        return .link(text: text.nodes, url: url.trimmingCharacters(in: .whitespaces))
+                    }
+                    url.append(c)
+                    pos += 1
+                } else {
+                    url.append(c)
+                    pos += 1
                 }
-                url.append(c)
-                pos += 1
-            } else {
-                url.append(c)
-                pos += 1
             }
+            pos = start
+            return nil
         }
+
+        // Reference link: [text][ref] or [text][] (collapsed, reuse the text as the label).
+        if pos < chars.count, chars[pos] == "[" {
+            var j = pos + 1
+            while j < chars.count, chars[j] != "]" {
+                j += 1
+            }
+            if j < chars.count {
+                let refLabel = String(chars[(pos + 1)..<j]).trimmingCharacters(in: .whitespaces)
+                let key = (refLabel.isEmpty ? labelString : refLabel).lowercased()
+                if let url = references[key] {
+                    pos = j + 1
+                    return .link(text: text.nodes, url: url)
+                }
+            }
+            pos = start
+            return nil
+        }
+
+        // Shortcut reference: [ref] - only a link when 'ref' is a defined label (else falls through to
+        // literal, so documents without reference definitions are unaffected).
+        if let url = references[labelString.lowercased()] {
+            return .link(text: text.nodes, url: url)
+        }
+
         pos = start
         return nil
     }

@@ -107,4 +107,43 @@ final class RichTextMarkdownParserTests: XCTestCase {
         XCTAssertEqual(parse("just words, no links here"),
                        [.paragraph([.text("just words, no links here")])])
     }
+
+    // MARK: - Reference-style links
+
+    func testReferenceLinkFull() {
+        XCTAssertEqual(parse("[text][ref]\n\n[ref]: https://swift.org"),
+                       [.paragraph([.link(text: [.text("text")], url: "https://swift.org")])])
+    }
+
+    func testReferenceLinkCollapsed() {
+        XCTAssertEqual(parse("[ref][]\n\n[ref]: https://swift.org"),
+                       [.paragraph([.link(text: [.text("ref")], url: "https://swift.org")])])
+    }
+
+    func testReferenceLinkShortcut() {
+        XCTAssertEqual(parse("[ref]\n\n[ref]: https://swift.org"),
+                       [.paragraph([.link(text: [.text("ref")], url: "https://swift.org")])])
+    }
+
+    func testReferenceLinkLabelIsCaseInsensitive() {
+        XCTAssertEqual(parse("[Text][REF]\n\n[ref]: https://swift.org"),
+                       [.paragraph([.link(text: [.text("Text")], url: "https://swift.org")])])
+    }
+
+    func testUndefinedReferenceIsLiteral() {
+        guard case .paragraph(let nodes)? = parse("[text][missing]").first else {
+            return XCTFail("expected a paragraph")
+        }
+        XCTAssertEqual(nodes.plainText, "[text][missing]")
+        XCTAssertFalse(nodes.contains { if case .link = $0 { return true } else { return false } })
+    }
+
+    func testLoneDefinitionRendersNothing() {
+        XCTAssertEqual(parse("[ref]: https://swift.org"), [])
+    }
+
+    func testDefinitionInsideFenceIsNotExtracted() {
+        XCTAssertEqual(parse("```\n[ref]: https://swift.org\n```"),
+                       [.codeBlock(language: nil, code: "[ref]: https://swift.org")])
+    }
 }
