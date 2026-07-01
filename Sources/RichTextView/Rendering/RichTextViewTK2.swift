@@ -14,17 +14,11 @@ import AppKit
 import UIKit
 #endif
 
-// Retains the TK2 pieces that must outlive a render pass. The fragment provider is a WEAK delegate of the
-// layout manager, so it has to be held here. Both platforms let the text view OWN its TextKit 2 stack
-// (created via the usingTextLayoutManager: initializer) and only attach the provider - hand-building the
-// stack and handing NSTextView a container is associated with broken / asserting selection on macOS.
+// Retains the one TK2 piece that must outlive a render pass: the fragment provider, which the layout
+// manager keeps only a WEAK reference to. Both platforms build the text view through the shared factory
+// (RichTextAppKit / RichTextUIKit), which returns that provider as `owner` for the coordinator to hold.
 final class TextKit2Coordinator {
-    let provider: RichTextFragmentProvider   // the iOS path uses this directly as the layout-manager delegate
-    var owner: AnyObject?                     // the macOS path retains the shared factory's delegate here
-
-    init(metrics: RichTextDecorationMetrics) {
-        provider = RichTextFragmentProvider(metrics: metrics)
-    }
+    var owner: AnyObject?
 }
 
 // Full content height under TextKit 2: force layout and take the bottom of the lowest fragment.
@@ -45,7 +39,7 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
     let metrics: RichTextDecorationMetrics
 
     func makeCoordinator() -> TextKit2Coordinator {
-        TextKit2Coordinator(metrics: metrics)
+        TextKit2Coordinator()
     }
 
     // Builds the text view through the shared AppKit factory (RichTextAppKit) so the SwiftUI host and a
@@ -95,30 +89,20 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     let metrics: RichTextDecorationMetrics
 
     func makeCoordinator() -> TextKit2Coordinator {
-        TextKit2Coordinator(metrics: metrics)
+        TextKit2Coordinator()
     }
 
+    // Builds the text view through the shared UIKit factory (RichTextUIKit) so the SwiftUI host and a plain
+    // UIKit host exercise identical setup.
     func makeUIView(context: Context) -> UITextView {
-        // usingTextLayoutManager: true gives a TextKit 2 text view. Attach our fragment provider before
-        // content so the custom fragments are used the first time layout runs. We deliberately avoid the
-        // TextKit 1 bridges (.layoutManager / .textStorage), which would silently downgrade the view.
-        let textView = UITextView(usingTextLayoutManager: true)
-        textView.textLayoutManager?.delegate = context.coordinator.provider
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.isScrollEnabled = false
-        textView.backgroundColor = .clear
-        textView.textContainerInset = .zero
-        textView.textContainer.lineFragmentPadding = 0
-        textView.adjustsFontForContentSizeCategory = true
-        textView.linkTextAttributes = [.foregroundColor: UIColor.link]
-        textView.attributedText = attributed
+        let (textView, owner) = RichTextUIKit.makeTextKit2View(attributed: attributed, metrics: metrics)
+        context.coordinator.owner = owner
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        if textView.attributedText != attributed {
-            textView.attributedText = attributed
+        if RichTextUIKit.currentContent(of: textView)?.isEqual(to: attributed) == false {
+            RichTextUIKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
         }
     }
