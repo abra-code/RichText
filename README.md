@@ -1,12 +1,10 @@
 # RichText
 
-A dependency-free, cross-platform (iOS / iPadOS / macOS / visionOS) component that renders a whole rich
+Cross-platform (iOS / iPadOS / macOS / visionOS) component that renders a whole rich
 document - headings, paragraphs, code blocks, block quotes, lists, GFM tables, inline styling, links -
 into **one native text view**, so the entire document is **selectable and copyable as a single unit**.
 Copy is **table-aware** (RTF / HTML / Markdown) so content round-trips into TextEdit / Notes / Word even
 though iOS TextKit has no native table model.
-
-Investigation and full plan: `Private/ios-richtext-view-design.md`.
 
 ## Usage
 
