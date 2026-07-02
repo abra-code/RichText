@@ -157,7 +157,17 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
         let width = proposal.width ?? container.size.width
         container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         layoutManager.ensureLayout(for: container)
-        return CGSize(width: width, height: ceil(layoutManager.usedRect(for: container).height))
+        let height = ceil(layoutManager.usedRect(for: container).height)
+        // Measuring mutates the LIVE container, and SwiftUI probes several widths (including 0) in one
+        // pass. widthTracksTextView only re-tracks the container on an actual frame CHANGE, so if the
+        // final probe isn't the final frame width and the frame is already correct, the view would draw
+        // with the probe's geometry - a width-0 container draws no glyphs at all. Restore the on-screen
+        // width after measuring so drawing never uses probe state.
+        let liveWidth = nsView.bounds.width
+        if liveWidth > 0, liveWidth != width {
+            container.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
+        }
+        return CGSize(width: width, height: height)
     }
 }
 
@@ -212,7 +222,13 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
         let width = proposal.width ?? uiView.bounds.width
         stack.container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         stack.layoutManager.ensureLayout(for: stack.container)
-        return CGSize(width: width, height: ceil(stack.layoutManager.usedRect(for: stack.container).height))
+        let height = ceil(stack.layoutManager.usedRect(for: stack.container).height)
+        // See the AppKit twin: restore the on-screen width so drawing never uses probe geometry.
+        let liveWidth = uiView.bounds.width
+        if liveWidth > 0, liveWidth != width {
+            stack.container.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
+        }
+        return CGSize(width: width, height: height)
     }
 }
 

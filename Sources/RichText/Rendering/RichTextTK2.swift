@@ -82,7 +82,15 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         guard let layoutManager = nsView.textLayoutManager else {
             return nil
         }
-        return CGSize(width: width, height: ceil(measuredHeight(layoutManager)))
+        let height = ceil(measuredHeight(layoutManager))
+        // Measuring mutates the LIVE container and SwiftUI probes several widths (including 0); the
+        // container only re-tracks the view on an actual frame CHANGE. Restore the on-screen width so
+        // drawing never uses probe geometry (a width-0 container draws nothing). See the TK1 twin.
+        let liveWidth = nsView.bounds.width
+        if liveWidth > 0, liveWidth != width {
+            nsView.textContainer?.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
+        }
+        return CGSize(width: width, height: height)
     }
 }
 
@@ -145,11 +153,18 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? uiView.bounds.width
         uiView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        guard let layoutManager = uiView.textLayoutManager else {
-            let fitted = uiView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
-            return CGSize(width: width, height: ceil(fitted.height))
+        let height: CGFloat
+        if let layoutManager = uiView.textLayoutManager {
+            height = ceil(measuredHeight(layoutManager))
+        } else {
+            height = ceil(uiView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)).height)
         }
-        return CGSize(width: width, height: ceil(measuredHeight(layoutManager)))
+        // See the AppKit twin: restore the on-screen width so drawing never uses probe geometry.
+        let liveWidth = uiView.bounds.width
+        if liveWidth > 0, liveWidth != width {
+            uiView.textContainer.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
+        }
+        return CGSize(width: width, height: height)
     }
 }
 
