@@ -65,7 +65,10 @@ public enum RichTextHTMLSerializer {
         case .paragraph(let inlines):
             return "<p>" + inline(inlines, images: images) + "</p>"
         case .codeBlock(let language, let code):
-            let cls = language.map { " class=\"language-\($0)\"" } ?? ""
+            // The language comes from an untrusted fenced-code info string; restrict it to a safe class
+            // token so it cannot break out of the attribute / <code> tag (an HTML-injection vector into
+            // pasteboard HTML). Anything outside the allow-list is dropped.
+            let cls = language.map { sanitizeLanguage($0) }.flatMap { $0.isEmpty ? nil : " class=\"language-\($0)\"" } ?? ""
             return "<pre style=\"\(CSS.codeBlock)\"><code\(cls)>" + escape(code) + "</code></pre>"
         case .blockQuote(let inner):
             return "<blockquote style=\"\(CSS.quote)\">\n" + inner.map { Self.block($0, images: images) }.joined(separator: "\n") + "\n</blockquote>"
@@ -161,5 +164,12 @@ public enum RichTextHTMLSerializer {
 
     private static func escapeAttribute(_ s: String) -> String {
         return escape(s).replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    // A code-fence language is emitted into a `language-...` CSS class. Keep only characters valid in a
+    // restricted identifier so a crafted info string cannot close the attribute or the <code> tag.
+    private static func sanitizeLanguage(_ s: String) -> String {
+        let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._+-")
+        return String(s.filter { allowed.contains($0) })
     }
 }

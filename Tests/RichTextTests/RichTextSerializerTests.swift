@@ -124,6 +124,34 @@ final class RichTextSerializerTests: XCTestCase {
         XCTAssertTrue(RichTextRTFSerializer.string(from: doc).contains("HYPERLINK \"https://swift.org\""))
     }
 
+    // MARK: - Code-fence language sanitization (HTML injection)
+
+    func testHTMLCodeBlockLanguageCannotBreakOutOfAttribute() {
+        // A crafted fenced-code language must not close the class attribute / <code> tag and inject markup
+        // into pasteboard HTML. Only safe identifier characters survive into the language- class; the
+        // quote/angle-bracket/slash/equals structural characters are dropped, so no breakout is possible.
+        let doc = RichTextDocument(blocks: [
+            .codeBlock(language: "rust\"><img/src=x/onerror=alert(1)>", code: "let x = 1")
+        ])
+        let html = RichTextHTMLSerializer.fragment(from: doc)
+        XCTAssertFalse(html.contains("<img"), "language must not inject an <img> element")
+        XCTAssertFalse(html.contains("onerror="), "language must not inject an event-handler attribute")
+        XCTAssertFalse(html.contains("/src=x"), "raw structural characters must not survive into the output")
+        // The safe characters survive, concatenated, as an inert class token (letters/digits only here).
+        XCTAssertTrue(html.contains("class=\"language-rustimgsrcxonerroralert1\""),
+                      "expected the sanitized class token, got \(html)")
+        XCTAssertTrue(html.contains("let x = 1"), "code body should still render")
+    }
+
+    func testHTMLCodeBlockDropsAttributeWhenLanguageFullyStripped() {
+        // A language made entirely of disallowed characters yields no class attribute at all.
+        let doc = RichTextDocument(blocks: [.codeBlock(language: "\"'><&", code: "x")])
+        let html = RichTextHTMLSerializer.fragment(from: doc)
+        XCTAssertFalse(html.contains("<script"), "must not inject a <script> element")
+        XCTAssertFalse(html.contains("class="), "a fully-stripped language must not emit an empty class attribute")
+        XCTAssertTrue(html.contains("<code>"), "a bare <code> tag should be emitted")
+    }
+
     // MARK: - Image scheme gating
 
     func testHTMLFileImageFallsBackToAltText() {
