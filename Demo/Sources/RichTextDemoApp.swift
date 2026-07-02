@@ -11,10 +11,51 @@ import RichText
 struct RichTextDemoApp: App {
     var body: some Scene {
         WindowGroup {
+            // macOS gets the attributed-string demo as its own window (below); iOS / iPadOS, where per-window
+            // scenes do not apply on iPhone, reaches it through a tab.
+            #if os(macOS)
             DemoView()
+            #else
+            RootTabView()
+            #endif
+        }
+
+        #if os(macOS)
+        // A second, real window for the attributed-string demo. It also opens from the menu (Cmd-Shift-2).
+        Window("Attributed String", id: AttributedStringDemoView.windowID) {
+            AttributedStringDemoView()
+        }
+        .commands {
+            AttributedStringWindowCommands()
+        }
+        #endif
+    }
+}
+
+#if os(macOS)
+private struct AttributedStringWindowCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("Attributed String Window") {
+                openWindow(id: AttributedStringDemoView.windowID)
+            }
+            .keyboardShortcut("2", modifiers: [.command, .shift])
         }
     }
 }
+#else
+private struct RootTabView: View {
+    var body: some View {
+        TabView {
+            DemoView()
+                .tabItem { Label("Markdown", systemImage: "doc.richtext") }
+            AttributedStringDemoView()
+                .tabItem { Label("Attributed", systemImage: "textformat") }
+        }
+    }
+}
+#endif
 
 private let sampleMarkdown = """
 # RichText
