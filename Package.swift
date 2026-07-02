@@ -21,9 +21,9 @@ let package = Package(
         .library(name: "RichText", targets: ["RichText"]),
     ],
     dependencies: [
-        // AsyncImageCache lives in its own repo, a sibling directory. Filesystem reference for now; when it
-        // is published this can become a versioned .package(url:) GitHub reference.
-        .package(path: "../AsyncImageCache"),
+        // AsyncImageCache lives in its own repo. Tracking the main branch until the package cuts a tagged
+        // release, at which point this can become a versioned requirement (e.g. from: "1.0.0").
+        .package(url: "https://github.com/abra-code/AsyncImageCache", branch: "main"),
     ],
     targets: [
         .target(
