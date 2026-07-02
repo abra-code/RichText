@@ -150,7 +150,13 @@ public enum RichTextRTFSerializer {
             case .code(let s):
                 out += "\\f1 " + escape(s) + "\\f0 "
             case .link(let c, let url):
-                out += "{\\field{\\*\\fldinst{HYPERLINK \"" + escape(url) + "\"}}{\\fldrslt " + inline(c, images: images) + "}}"
+                // Only emit the HYPERLINK field for an allow-listed scheme, else just the child inlines, so a
+                // javascript: target cannot ride along in the pasteboard RTF.
+                if RichTextURLPolicy.allowedLink(url) != nil {
+                    out += "{\\field{\\*\\fldinst{HYPERLINK \"" + escape(url) + "\"}}{\\fldrslt " + inline(c, images: images) + "}}"
+                } else {
+                    out += inline(c, images: images)
+                }
             case .image(let alt, let url):
                 // Embed the bytes as a \pict when we have them AND RTF can carry the format (PNG/JPEG); GIF
                 // and anything else fall back to the alt text (the pasteboard's HTML rep still carries them).
@@ -206,6 +212,11 @@ public enum RichTextRTFSerializer {
         }
     }
 
+    // A UTF-16 code unit as the signed 16-bit value an \uN word wants (values > 32767 wrap to negative).
+    private static func signedWord(_ unit: UInt32) -> Int {
+        return unit > 32767 ? Int(unit) - 65536 : Int(unit)
+    }
+
     private static func escape(_ s: String) -> String {
         var out = ""
         for scalar in s.unicodeScalars {
@@ -222,10 +233,15 @@ public enum RichTextRTFSerializer {
                 if scalar.value < 128 {
                     out.unicodeScalars.append(scalar)
                 } else if scalar.value <= 0xFFFF {
-                    let signed = scalar.value > 32767 ? Int(scalar.value) - 65536 : Int(scalar.value)
-                    out += "\\u\(signed) ?"
+                    out += "\\u\(signedWord(scalar.value)) ?"
                 } else {
-                    out += "?"
+                    // RTF has no non-BMP escape word, so emit the UTF-16 SURROGATE PAIR - two \uN words (high
+                    // then low), each a signed 16-bit value like the BMP path. Without this an emoji collapses
+                    // to a single bare '?' and is lost.
+                    let v = scalar.value - 0x10000
+                    let high = 0xD800 + (v >> 10)
+                    let low = 0xDC00 + (v & 0x3FF)
+                    out += "\\u\(signedWord(high)) ?\\u\(signedWord(low)) ?"
                 }
             }
         }

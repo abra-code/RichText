@@ -30,15 +30,19 @@ final class RichTextImageAttachment: NSTextAttachment {
     let alt: String
     private(set) var loadedImage: RTVImage?
     private var failed = false
-    private let maxWidth: CGFloat
+    // Not private: RichTextImageLoading (same file, different type) reads it so every cache lookup / load for
+    // this attachment builds the SAME ImageRequest variant (see RichTextImageLoading.imageRequest).
+    let maxWidth: CGFloat
 
-    init(alt: String, url: URL?, maxWidth: CGFloat = 320) {
+    init(alt: String, url: URL?, maxWidth: CGFloat = RichTextImageLoading.defaultMaxWidth) {
         self.alt = alt
         self.url = url
         self.maxWidth = maxWidth
         super.init(data: nil, ofType: nil)
         // If this URL was already fetched (e.g. the attributed string was rebuilt), show it right away.
-        if let url, let cached = RichTextImageLoading.cachedImage(for: url) {
+        // cachedImage gates the scheme (a file: image is never fetched, so it is never in the cache) and uses
+        // this attachment's maxWidth so the variant key matches what a load would store.
+        if let url, let cached = RichTextImageLoading.cachedImage(for: url, maxWidth: maxWidth) {
             loadedImage = cached
         }
         refresh()
@@ -193,15 +197,40 @@ enum RichTextImageLoading {
     // live text storage. `inFlight` avoids spawning redundant load Tasks (the store also de-duplicates).
     private static var inFlight = Set<URL>()
 
-    nonisolated static func cachedImage(for url: URL) -> RTVImage? {
-        return ImageStore.shared.cachedImage(for: ImageRequest(url: url))
+    // The default on-screen display cap (points) for an inline image; also the attachment's default maxWidth.
+    nonisolated static let defaultMaxWidth: CGFloat = 320
+
+    // The SINGLE place that builds a store request for an inline image, so every lookup and the load for a
+    // given URL share ONE variant key (ImageRequest.variantKey includes targetWidth; a mismatch between the
+    // stored variant and a lookup = permanent cache miss => images reload forever / never display).
+    //
+    // targetWidth caps the decode/downscale so a multi-megapixel source is scaled down instead of decoded at
+    // full natural resolution (a decompression-bomb / OOM defense). maxWidth is a POINT cap; targetWidth is in
+    // PIXELS - we map 1:1 (the point value IS the pixel cap). This is deliberately scale-INDEPENDENT: the
+    // variant key must be byte-identical at every call site, and the live screen scale is not safely readable
+    // from the nonisolated lookups below. Trade-off: on a 2x/3x display the image is decoded at the point
+    // width and upscaled a little for presentation (slightly soft); raising this to a fixed multiple is safe
+    // ONLY if the SAME multiple is applied here (all call sites route through this one helper, so they would).
+    nonisolated static func imageRequest(for url: URL, maxWidth: CGFloat) -> ImageRequest {
+        return ImageRequest(url: url, targetWidth: maxWidth)
+    }
+
+    nonisolated static func cachedImage(for url: URL, maxWidth: CGFloat = defaultMaxWidth) -> RTVImage? {
+        // Disallowed schemes (file:, javascript:, ...) are never loaded, so never cached - short-circuit.
+        guard RichTextURLPolicy.allowsImage(url) else {
+            return nil
+        }
+        return ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: maxWidth))
     }
 
     /// The embeddable bytes + format + display size of an already-loaded image, or nil if not loaded. Used by
     /// the serializers to embed the picture in copied RTF/HTML - sourced from the store's original-bytes cache
     /// (PNG/JPEG/GIF kept verbatim; other formats were transcoded once at load time).
-    nonisolated static func cachedInlineImage(for url: URL, maxWidth: CGFloat = 320) -> RichTextInlineImage? {
-        guard let original = ImageStore.shared.cachedOriginalBytes(for: url) else {
+    nonisolated static func cachedInlineImage(for url: URL, maxWidth: CGFloat = defaultMaxWidth) -> RichTextInlineImage? {
+        // Defense in depth at the embed boundary: only allow-listed image schemes are embeddable. (Loads are
+        // already gated, so a disallowed scheme is never in the cache - but this makes the rule explicit here.)
+        // This path embeds the ORIGINAL bytes (variant-width-independent), so it does not build an ImageRequest.
+        guard RichTextURLPolicy.allowsImage(url), let original = ImageStore.shared.cachedOriginalBytes(for: url) else {
             return nil
         }
         // Transcode lazily, from the cache's ORIGINAL bytes - the cache stays generic (no copy concerns).
@@ -215,8 +244,8 @@ enum RichTextImageLoading {
         var changed = false
         content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
             guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil,
-                  let url = attachment.url,
-                  let image = ImageStore.shared.cachedImage(for: ImageRequest(url: url)) else {
+                  let url = attachment.url, RichTextURLPolicy.allowsImage(url),
+                  let image = ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) else {
                 return
             }
             attachment.setImage(image)
@@ -230,15 +259,19 @@ enum RichTextImageLoading {
     static func startLoading(in content: NSAttributedString, reload: @escaping @MainActor () -> Void) {
         applyCached(in: content)
         content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
+            // Gate the scheme here so a disallowed URL (file:, javascript:, ...) is never fetched from
+            // disk/network - the attachment stays in its placeholder state. maxWidth aligns the cache-check
+            // and the load variant key with the attachment's stored variant (see imageRequest).
             guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil,
-                  let url = attachment.url,
-                  ImageStore.shared.cachedImage(for: ImageRequest(url: url)) == nil,
+                  let url = attachment.url, RichTextURLPolicy.allowsImage(url),
+                  ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil,
                   !inFlight.contains(url) else {
                 return
             }
+            let maxWidth = attachment.maxWidth
             inFlight.insert(url)
             Task {
-                let image = await load(url)
+                let image = await load(url, maxWidth: maxWidth)
                 inFlight.remove(url)
                 if image == nil {
                     attachment.markFailed()
@@ -250,9 +283,10 @@ enum RichTextImageLoading {
     }
 
     // Bridge the store's completion-based load into async so the surrounding Task stays on the main actor.
-    private static func load(_ url: URL) async -> RTVImage? {
+    // maxWidth is threaded through so the LOAD stores the same variant the lookups above check for.
+    private static func load(_ url: URL, maxWidth: CGFloat) async -> RTVImage? {
         return await withCheckedContinuation { continuation in
-            ImageStore.shared.load(ImageRequest(url: url)) { image in
+            ImageStore.shared.load(imageRequest(for: url, maxWidth: maxWidth)) { image in
                 continuation.resume(returning: image)
             }
         }

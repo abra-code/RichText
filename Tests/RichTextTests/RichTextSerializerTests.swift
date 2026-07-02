@@ -99,4 +99,56 @@ final class RichTextSerializerTests: XCTestCase {
         let rtf = RichTextRTFSerializer.string(from: doc)
         XCTAssertTrue(rtf.contains("a \\{b\\} \\\\ c"))
     }
+
+    // MARK: - URL policy (link scheme gating at the serialize boundary)
+
+    func testHTMLJavascriptLinkHasNoHref() {
+        let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("click")], url: "javascript:alert(1)")])])
+        let html = RichTextHTMLSerializer.fragment(from: doc)
+        XCTAssertTrue(html.contains("click"), "link text must still render")
+        XCTAssertFalse(html.contains("href"), "javascript: link must not become an <a href>")
+        XCTAssertFalse(html.contains("javascript:"), "javascript: url must not survive into HTML")
+    }
+
+    func testRTFJavascriptLinkHasNoHyperlink() {
+        let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("click")], url: "javascript:alert(1)")])])
+        let rtf = RichTextRTFSerializer.string(from: doc)
+        XCTAssertTrue(rtf.contains("click"), "link text must still render")
+        XCTAssertFalse(rtf.contains("HYPERLINK"), "javascript: link must not become a HYPERLINK field")
+        XCTAssertFalse(rtf.contains("javascript:"), "javascript: url must not survive into RTF")
+    }
+
+    func testHTTPLinkStillEmitsHrefAndHyperlink() {
+        let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("go")], url: "https://swift.org")])])
+        XCTAssertTrue(RichTextHTMLSerializer.fragment(from: doc).contains("<a href=\"https://swift.org\""))
+        XCTAssertTrue(RichTextRTFSerializer.string(from: doc).contains("HYPERLINK \"https://swift.org\""))
+    }
+
+    // MARK: - Image scheme gating
+
+    func testHTMLFileImageFallsBackToAltText() {
+        // A file: image from untrusted Markdown must never become an <img src="file:..."> (local-file read /
+        // exfiltration on paste); it falls back to the alt text.
+        let doc = RichTextDocument(blocks: [.paragraph([.image(alt: "secret", url: "file:///etc/passwd")])])
+        let html = RichTextHTMLSerializer.fragment(from: doc)
+        XCTAssertFalse(html.contains("file:"), "must never emit a file: image src")
+        XCTAssertFalse(html.contains("<img"), "a disallowed image scheme must not become an <img>")
+        XCTAssertTrue(html.contains("secret"), "alt text should remain")
+    }
+
+    func testHTMLHTTPSImageStillEmittedWhenUnresolved() {
+        let doc = RichTextDocument(blocks: [.paragraph([.image(alt: "cat", url: "https://x.test/cat.png")])])
+        let html = RichTextHTMLSerializer.fragment(from: doc)   // default resolver returns nil
+        XCTAssertTrue(html.contains("src=\"https://x.test/cat.png\""), "allow-listed image URL should survive")
+    }
+
+    // MARK: - RTF non-BMP (astral) escaping
+
+    func testRTFEmojiEmitsSurrogatePair() {
+        // U+1F600 has no single RTF escape word; it must become the UTF-16 surrogate pair D83D DE00, each as a
+        // signed \u word (-10179 and -8704), instead of collapsing to a bare '?'.
+        let doc = RichTextDocument(blocks: [.paragraph([.text("\u{1F600}")])])
+        let rtf = RichTextRTFSerializer.string(from: doc)
+        XCTAssertTrue(rtf.contains("\\u-10179 ?\\u-8704 ?"), "expected surrogate-pair \\u words, got \(rtf)")
+    }
 }

@@ -125,16 +125,27 @@ public enum RichTextHTMLSerializer {
             case .code(let s):
                 out += "<code style=\"\(CSS.inlineCode)\">" + escape(s) + "</code>"
             case .link(let c, let url):
-                out += "<a href=\"" + escapeAttribute(url) + "\" style=\"\(CSS.anchor)\">" + inline(c, images: images) + "</a>"
-            case .image(let alt, let url):
-                // Embed the bytes as a data: URI when we have them (survives paste); otherwise link the URL.
-                let src: String
-                if let loaded = images(url) {
-                    src = "data:" + loaded.format.mimeType + ";base64," + loaded.data.base64EncodedString()
+                // Only wrap in <a href> for an allow-listed scheme, else emit just the child inlines so a
+                // javascript: target cannot survive into pasteboard HTML (it would run on paste into a browser).
+                if RichTextURLPolicy.allowedLink(url) != nil {
+                    out += "<a href=\"" + escapeAttribute(url) + "\" style=\"\(CSS.anchor)\">" + inline(c, images: images) + "</a>"
                 } else {
-                    src = escapeAttribute(url)
+                    out += inline(c, images: images)
                 }
-                out += "<img src=\"" + src + "\" alt=\"" + escapeAttribute(alt) + "\" style=\"max-width:100%\">"
+            case .image(let alt, let url):
+                if let loaded = images(url) {
+                    // Resolved: embed the bytes as a data: URI (survives paste). Only images that passed the
+                    // load-time scheme gate are ever resolved, so an embedded data: URI here is safe.
+                    let src = "data:" + loaded.format.mimeType + ";base64," + loaded.data.base64EncodedString()
+                    out += "<img src=\"" + src + "\" alt=\"" + escapeAttribute(alt) + "\" style=\"max-width:100%\">"
+                } else if let parsed = URL(string: url), RichTextURLPolicy.allowsImage(parsed) {
+                    // Unresolved but an allow-listed scheme (http/https/data): keep the URL as the src.
+                    out += "<img src=\"" + escapeAttribute(url) + "\" alt=\"" + escapeAttribute(alt) + "\" style=\"max-width:100%\">"
+                } else {
+                    // Disallowed scheme (e.g. file:) and not embedded: fall back to the alt text - never emit
+                    // <img src="file:..."> (a local-file read / exfiltration vector).
+                    out += escape(alt)
+                }
             case .lineBreak:
                 out += "<br>"
             }
