@@ -79,10 +79,19 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
         let width = proposal.width ?? nsView.bounds.width
         nsView.textContainer?.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        guard let layoutManager = nsView.textLayoutManager else {
+        let height: CGFloat
+        if let layoutManager = nsView.textLayoutManager {
+            height = ceil(measuredHeight(layoutManager))
+        } else if let layoutManager = nsView.layoutManager, let container = nsView.textContainer {
+            // NSTextView silently downgrades itself to TextKit 1 for content TK2 cannot lay out (e.g.
+            // NSTextTable decoded from RTF / HTML); textLayoutManager is nil from then on. Measure via the
+            // TK1 stack instead of giving SwiftUI no answer. Only reached AFTER a downgrade - merely
+            // touching .layoutManager on a live TK2 view would itself force one.
+            layoutManager.ensureLayout(for: container)
+            height = ceil(layoutManager.usedRect(for: container).height)
+        } else {
             return nil
         }
-        let height = ceil(measuredHeight(layoutManager))
         // Measuring mutates the LIVE container and SwiftUI probes several widths (including 0); the
         // container only re-tracks the view on an actual frame CHANGE. Restore the on-screen width so
         // drawing never uses probe geometry (a width-0 container draws nothing). See the TK1 twin.

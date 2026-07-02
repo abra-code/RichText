@@ -73,6 +73,25 @@ public enum RichTextAppKit {
     // verified in the AppKit diagnostic host).
     static func setContent(_ attributed: NSAttributedString, on textView: NSTextView) {
         textView.textStorage?.setAttributedString(attributed)
+        // TextKit 2 cannot lay out NSTextTable (RTF / HTML decoded tables): NSTextView downgrades ITSELF
+        // to TextKit 1 the moment layout meets a text block. Left to happen mid-layout, the first SwiftUI
+        // sizeThatFits still measures with TK2 (table cells stacked as plain paragraphs - the wrong
+        // height), and the stale height lingers as blank space. Trigger the inevitable downgrade eagerly
+        // instead, so every measure and draw uses one engine. (.layoutManager on a TK2 view forces it.)
+        if textView.textLayoutManager != nil, containsTextBlocks(attributed) {
+            _ = textView.layoutManager
+        }
+    }
+
+    private static func containsTextBlocks(_ attributed: NSAttributedString) -> Bool {
+        var found = false
+        attributed.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributed.length)) { value, _, stop in
+            if let style = value as? NSParagraphStyle, !style.textBlocks.isEmpty {
+                found = true
+                stop.pointee = true
+            }
+        }
+        return found
     }
 
     static func currentContent(of textView: NSTextView) -> NSAttributedString? {
