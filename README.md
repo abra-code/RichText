@@ -4,7 +4,10 @@ Cross-platform (iOS / iPadOS / macOS / visionOS) component that renders a whole 
 document - headings, paragraphs, code blocks, block quotes, lists, GFM tables, inline styling, links -
 into **one native text view**, so the entire document is **selectable and copyable as a single unit**.
 Copy is **table-aware** (RTF / HTML / Markdown) so content round-trips into TextEdit / Notes / Word even
-though iOS TextKit has no native table model.
+though iOS TextKit has no native table model.  
+
+Depends on [AsyncImageCache](https://github.com/abra-code/AsyncImageCache)  
+
 
 ## Usage
 
