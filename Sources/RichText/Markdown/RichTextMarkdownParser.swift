@@ -38,19 +38,23 @@ public enum RichTextMarkdownParser {
         var references: [String: String] = [:]
         var kept: [String] = []
         var inFence = false
-        var fenceMarker = ""
+        var fenceChar: Character = "`"
+        var fenceLength = 0
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if inFence {
                 kept.append(line)
-                if trimmed.hasPrefix(fenceMarker) {
+                // Match parseFence's close rule: a closing fence is a line of only the fence char whose run
+                // is at least as long as the opener. A shorter run (e.g. ``` inside a ```` block) stays code.
+                if !trimmed.isEmpty, trimmed.allSatisfy({ $0 == fenceChar }), trimmed.count >= fenceLength {
                     inFence = false
                 }
                 continue
             }
             if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
                 inFence = true
-                fenceMarker = String(trimmed.prefix(3))
+                fenceChar = trimmed.first!
+                fenceLength = trimmed.prefix(while: { $0 == fenceChar }).count
                 kept.append(line)
                 continue
             }
@@ -90,7 +94,16 @@ public enum RichTextMarkdownParser {
         return (label.lowercased(), url)
     }
 
-    static func parseBlocks(_ lines: [String], references: [String: String] = [:]) -> [RichTextBlock] {
+    // Nesting cap for block quotes / lists. Deep enough that real documents never reach it, shallow enough
+    // that unbounded nesting (e.g. "> " repeated thousands of times) cannot recurse into a stack overflow.
+    private static let maxBlockDepth = 48
+
+    static func parseBlocks(_ lines: [String], references: [String: String] = [:], depth: Int = 0) -> [RichTextBlock] {
+        // Past the cap, stop descending into quotes / lists: emit the remaining lines as plain paragraphs so
+        // nesting is bounded and no text is lost (the leftover markers just render literally).
+        if depth > maxBlockDepth {
+            return flattenToParagraphs(lines, references: references)
+        }
         var blocks: [RichTextBlock] = []
         var i = 0
         while i < lines.count {
@@ -114,7 +127,7 @@ public enum RichTextMarkdownParser {
                 continue
             }
             if isBlockQuote(line) {
-                blocks.append(parseBlockQuote(lines, &i, references: references))
+                blocks.append(parseBlockQuote(lines, &i, references: references, depth: depth))
                 continue
             }
             if let table = parseTable(lines, &i, references: references) {
@@ -122,11 +135,33 @@ public enum RichTextMarkdownParser {
                 continue
             }
             if listItemMatch(line) != nil {
-                blocks.append(parseList(lines, &i, references: references))
+                blocks.append(parseList(lines, &i, references: references, depth: depth))
                 continue
             }
             blocks.append(parseParagraph(lines, &i, references: references))
         }
+        return blocks
+    }
+
+    // Emits lines as plain paragraphs (blank lines separate them) without recursing into any nested-block
+    // parsing. Used when the nesting cap is hit - preserves all text while bounding recursion.
+    private static func flattenToParagraphs(_ lines: [String], references: [String: String]) -> [RichTextBlock] {
+        var blocks: [RichTextBlock] = []
+        var group: [String] = []
+        func flush() {
+            if !group.isEmpty {
+                blocks.append(.paragraph(RichTextInlineParser.parse(joinParagraph(group), references: references)))
+                group.removeAll()
+            }
+        }
+        for line in lines {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                flush()
+            } else {
+                group.append(line)
+            }
+        }
+        flush()
         return blocks
     }
 
@@ -185,7 +220,9 @@ public enum RichTextMarkdownParser {
             return nil
         }
         var content = rest.trimmingCharacters(in: .whitespaces)
-        content = content.replacingOccurrences(of: "\\s*#+\\s*$", with: "", options: .regularExpression)
+        // A GFM ATX closing sequence is only a closing sequence when preceded by whitespace, so require a
+        // space before the trailing '#'s. Without this "# C#" would wrongly strip the '#' from "C#".
+        content = content.replacingOccurrences(of: "\\s+#+\\s*$", with: "", options: .regularExpression)
         return .heading(level: level, RichTextInlineParser.parse(content, references: references))
     }
 
@@ -207,7 +244,7 @@ public enum RichTextMarkdownParser {
         return line.drop(while: { $0 == " " }).first == ">"
     }
 
-    private static func parseBlockQuote(_ lines: [String], _ i: inout Int, references: [String: String] = [:]) -> RichTextBlock {
+    private static func parseBlockQuote(_ lines: [String], _ i: inout Int, references: [String: String] = [:], depth: Int = 0) -> RichTextBlock {
         var inner: [String] = []
         while i < lines.count {
             let stripped = lines[i].drop(while: { $0 == " " })
@@ -222,7 +259,7 @@ public enum RichTextMarkdownParser {
                 break
             }
         }
-        return .blockQuote(parseBlocks(inner, references: references))
+        return .blockQuote(parseBlocks(inner, references: references, depth: depth + 1))
     }
 
     // MARK: Lists
@@ -272,7 +309,7 @@ public enum RichTextMarkdownParser {
         return nil
     }
 
-    private static func parseList(_ lines: [String], _ i: inout Int, references: [String: String] = [:]) -> RichTextBlock {
+    private static func parseList(_ lines: [String], _ i: inout Int, references: [String: String] = [:], depth: Int = 0) -> RichTextBlock {
         let first = listItemMatch(lines[i])!
         let ordered = first.ordered
         let baseIndent = first.indent
@@ -323,7 +360,7 @@ public enum RichTextMarkdownParser {
                     i += 1
                 }
             }
-            items.append(parseBlocks(itemLines, references: references))
+            items.append(parseBlocks(itemLines, references: references, depth: depth + 1))
         }
 
         return .list(ordered: ordered, start: first.start, tight: !loose, items: items)
@@ -435,20 +472,34 @@ private struct RichTextInlineParser {
     private let chars: [Character]
     private var pos = 0
     private let references: [String: String]
+    // Precomputed last index of ']' / ')' (or -1). Lets a link/image bail out in O(1) when no closing
+    // delimiter exists ahead - without it an unbalanced run like "[[[[..." makes every failed parse scan
+    // to end-of-input, which combined with the retry-by-one caller is catastrophic (O(2^n) / polynomial).
+    private let lastCloseBracket: Int
+    private let lastCloseParen: Int
+    // Recursion-depth cap for the structural helpers. Real inline nesting never approaches this; past it
+    // markup characters are emitted literally so a crafted deep/unbalanced nest cannot blow the stack.
+    private static let maxDepth = 32
 
     private init(_ text: String, _ references: [String: String]) {
-        self.chars = Array(text)
+        let characters = Array(text)
+        self.chars = characters
         self.references = references
+        self.lastCloseBracket = characters.lastIndex(of: "]") ?? -1
+        self.lastCloseParen = characters.lastIndex(of: ")") ?? -1
     }
 
     static func parse(_ text: String, references: [String: String] = [:]) -> [RichTextInline] {
         var parser = RichTextInlineParser(text, references)
-        return RichTextAutolinker.link(parser.parseRuns(stop: nil).nodes)
+        return RichTextAutolinker.link(parser.parseRuns(stop: nil, depth: 0).nodes)
     }
 
-    private mutating func parseRuns(stop: String?) -> (nodes: [RichTextInline], matched: Bool) {
+    private mutating func parseRuns(stop: String?, depth: Int) -> (nodes: [RichTextInline], matched: Bool) {
         var nodes: [RichTextInline] = []
         var buffer = ""
+        // Past the cap, stop treating markup as structural: emit it literally (advance by one). No text is
+        // lost - everything becomes plain text - and recursion is bounded.
+        let allowStructural = depth <= Self.maxDepth
 
         func flush() {
             if !buffer.isEmpty {
@@ -479,7 +530,7 @@ private struct RichTextInlineParser {
                 nodes.append(.lineBreak)
                 pos += 1
             case "`":
-                if let node = parseCodeSpan() {
+                if allowStructural, let node = parseCodeSpan() {
                     flush()
                     nodes.append(node)
                 } else {
@@ -487,7 +538,7 @@ private struct RichTextInlineParser {
                     pos += 1
                 }
             case "*", "_", "~":
-                if let node = parseEmphasis(c) {
+                if allowStructural, let node = parseEmphasis(c, depth: depth) {
                     flush()
                     nodes.append(node)
                 } else {
@@ -495,7 +546,7 @@ private struct RichTextInlineParser {
                     pos += 1
                 }
             case "!":
-                if let node = parseImage() {
+                if allowStructural, let node = parseImage() {
                     flush()
                     nodes.append(node)
                 } else {
@@ -503,7 +554,7 @@ private struct RichTextInlineParser {
                     pos += 1
                 }
             case "[":
-                if let node = parseLink() {
+                if allowStructural, let node = parseLink(depth: depth) {
                     flush()
                     nodes.append(node)
                 } else {
@@ -542,6 +593,10 @@ private struct RichTextInlineParser {
             return nil
         }
         pos += 2   // consume '!['
+        if pos > lastCloseBracket {   // no ']' ahead: alt text can never close - bail before scanning
+            pos = start
+            return nil
+        }
         var alt = ""
         while pos < chars.count, chars[pos] != "]" {
             alt.append(chars[pos])
@@ -552,6 +607,10 @@ private struct RichTextInlineParser {
             return nil
         }
         pos += 2   // consume ']('
+        if pos > lastCloseParen {   // no ')' ahead: url can never close - bail before scanning
+            pos = start
+            return nil
+        }
         var url = ""
         var depth = 1
         while pos < chars.count {
@@ -614,7 +673,7 @@ private struct RichTextInlineParser {
         return s
     }
 
-    private mutating func parseEmphasis(_ marker: Character) -> RichTextInline? {
+    private mutating func parseEmphasis(_ marker: Character, depth: Int) -> RichTextInline? {
         let start = pos
         var run = 0
         while pos < chars.count, chars[pos] == marker {
@@ -628,7 +687,7 @@ private struct RichTextInlineParser {
                 return nil
             }
             pos = start + 2
-            let inner = parseRuns(stop: "~~")
+            let inner = parseRuns(stop: "~~", depth: depth + 1)
             if inner.matched {
                 return .strikethrough(inner.nodes)
             }
@@ -639,7 +698,7 @@ private struct RichTextInlineParser {
         let level = min(run, 3)
         let closer = String(repeating: marker, count: level)
         pos = start + level
-        let inner = parseRuns(stop: closer)
+        let inner = parseRuns(stop: closer, depth: depth + 1)
         if inner.matched {
             switch level {
             case 1:
@@ -654,11 +713,15 @@ private struct RichTextInlineParser {
         return nil
     }
 
-    private mutating func parseLink() -> RichTextInline? {
+    private mutating func parseLink(depth: Int) -> RichTextInline? {
         let start = pos
         pos += 1                              // consume '['
+        if pos > lastCloseBracket {           // no ']' ahead: not a link in any form - bail in O(1)
+            pos = start
+            return nil
+        }
         let labelStart = pos
-        let text = parseRuns(stop: "]")
+        let text = parseRuns(stop: "]", depth: depth + 1)
         guard text.matched else {
             pos = start
             return nil
@@ -667,18 +730,22 @@ private struct RichTextInlineParser {
 
         // Inline link: [text](url)
         if pos < chars.count, chars[pos] == "(" {
+            if pos + 1 > lastCloseParen {     // no ')' ahead: url can never close - bail before scanning
+                pos = start
+                return nil
+            }
             pos += 1
             var url = ""
-            var depth = 1
+            var parenDepth = 1
             while pos < chars.count {
                 let c = chars[pos]
                 if c == "(" {
-                    depth += 1
+                    parenDepth += 1
                     url.append(c)
                     pos += 1
                 } else if c == ")" {
-                    depth -= 1
-                    if depth == 0 {
+                    parenDepth -= 1
+                    if parenDepth == 0 {
                         pos += 1
                         return .link(text: text.nodes, url: url.trimmingCharacters(in: .whitespaces))
                     }

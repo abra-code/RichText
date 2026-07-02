@@ -11,8 +11,14 @@
 import Foundation
 
 enum RichTextAutolinker {
+    // Built once and reused: NSDataDetector is expensive to construct and is safe to reuse for matching
+    // (including across threads - the type is Sendable), so rebuilding it per paragraph / heading / table
+    // cell was pure waste.
+    private static let detector =
+        try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
     static func link(_ nodes: [RichTextInline]) -> [RichTextInline] {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+        guard let detector else {
             return nodes
         }
         return apply(nodes, detector)
