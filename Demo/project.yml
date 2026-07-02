@@ -23,6 +23,8 @@ targets:
       iOS: "16.0"
     sources:
       - path: Sources
+      - path: Resources
+        buildPhase: resources
     dependencies:
       - package: RichText
         product: RichText

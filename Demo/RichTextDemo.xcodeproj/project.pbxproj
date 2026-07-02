@@ -8,9 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		178A465E707388FA4A8FF5F1 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 64D118C14CDC2A2CFF1A8195 /* RichText */; };
+		8836636D5E49DBA5D857CEB1 /* TypographyTour.rtf in Resources */ = {isa = PBXBuildFile; fileRef = 380E8F879D14CC4FA4243F6C /* TypographyTour.rtf */; };
 		8BF88BC3469096204F798115 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 39CAFA1CF90127847188E912 /* RichText */; };
 		BD757AC86CDCC2CCBB495600 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B063D94BAF1EC2ED13F5AC /* main.swift */; };
 		C74269B0D75FA38FA0B24818 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 68070D47C74E56233A30D522 /* RichText */; };
+		C7C6C228E7C990E450EEB130 /* Showcase.html in Resources */ = {isa = PBXBuildFile; fileRef = D5FC867757510E6BC3CFDA92 /* Showcase.html */; };
 		D2A82427300BBE3279A8EA05 /* RichTextDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC93D8A016AFCCCB866F48A /* RichTextDemoApp.swift */; };
 		E2AF1C14FF248090BF86F8F1 /* AttributedStringDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DB20E37DD6890C7806C1D3 /* AttributedStringDemo.swift */; };
 		F0820CFEEF9424057AEA51A9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1813C91DEEF7E8088A81665 /* AppDelegate.swift */; };
@@ -18,10 +20,12 @@
 
 /* Begin PBXFileReference section */
 		31DB20E37DD6890C7806C1D3 /* AttributedStringDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttributedStringDemo.swift; sourceTree = "<group>"; };
+		380E8F879D14CC4FA4243F6C /* TypographyTour.rtf */ = {isa = PBXFileReference; lastKnownFileType = text.rtf; path = TypographyTour.rtf; sourceTree = "<group>"; };
 		6670059F95914C58AEE62773 /* RichTextUIKitDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RichTextUIKitDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8EC93D8A016AFCCCB866F48A /* RichTextDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextDemoApp.swift; sourceTree = "<group>"; };
 		90B063D94BAF1EC2ED13F5AC /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B99E452FF39E964756E6D84F /* RichTextDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RichTextDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D5FC867757510E6BC3CFDA92 /* Showcase.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Showcase.html; sourceTree = "<group>"; };
 		DA5E155EC109A0C4E32B5457 /* RichTextAppKitDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RichTextAppKitDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1813C91DEEF7E8088A81665 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E959FCA1996F2FA5F141A237 /* RichText */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RichText; path = ..; sourceTree = SOURCE_ROOT; };
@@ -63,6 +67,15 @@
 			path = UIKitSources;
 			sourceTree = "<group>";
 		};
+		3DE651F3A4105F5CBD67C67C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D5FC867757510E6BC3CFDA92 /* Showcase.html */,
+				380E8F879D14CC4FA4243F6C /* TypographyTour.rtf */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		67D8F6FB244A629D0705852D /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -78,6 +91,7 @@
 			children = (
 				D7E3CBE160422EC22E5D4500 /* AppKitSources */,
 				D151CFA0F1B5E801795A2723 /* Packages */,
+				3DE651F3A4105F5CBD67C67C /* Resources */,
 				DAFF2143D0C25FB5E1F25E81 /* Sources */,
 				2B542A3E6DDEEE3D5C513943 /* UIKitSources */,
 				67D8F6FB244A629D0705852D /* Products */,
@@ -155,6 +169,7 @@
 			buildConfigurationList = 8779C201EA23CEC0AF8DAEEA /* Build configuration list for PBXNativeTarget "RichTextDemo" */;
 			buildPhases = (
 				8A80F628E0D2CC7020858EED /* Sources */,
+				19E5CF7A08E4C8780FA15653 /* Resources */,
 				29E82EA730F19684116BA901 /* Frameworks */,
 			);
 			buildRules = (
@@ -203,6 +218,18 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		19E5CF7A08E4C8780FA15653 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C7C6C228E7C990E450EEB130 /* Showcase.html in Resources */,
+				8836636D5E49DBA5D857CEB1 /* TypographyTour.rtf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		550863D2A85797DB6C433CB2 /* Sources */ = {
