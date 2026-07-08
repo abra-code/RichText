@@ -97,6 +97,55 @@ private final class TextKitStack {
     }
 }
 
+// The width RichText lays out at for a SwiftUI size proposal, shared by BOTH TextKit backends so their width
+// policy cannot drift. A FINITE proposal wraps to that width. An UNSPECIFIED (nil) or INFINITE proposal
+// sizes to content, so `naturalSize` carries the natural, unwrapped extent from one NSAttributedString.size()
+// (nil for a finite proposal, whose height the caller measures at `width`).
+//
+// This never falls back to the live container / bounds width. That is mutable probe state: SwiftUI drives
+// sizeThatFits at several widths in one pass (the real width, then 0, then nil), and on the FIRST layout
+// pass - before the view has a frame, so the restore in each caller is a no-op - the nil (ideal-size) probe
+// would inherit a 0-width container and report a bogus one-line size. A LazyVStack sizes its rows lazily and
+// caches that ideal, so a chat bubble materialized with the wrong height - text shifted down inside the
+// bubble and clipped below it - until a fresh layout was forced (scrolling the row off screen and back). See
+// RichTextChatSizingTests. size() also measures WITHOUT a container, so it avoids the used-width clamp a live
+// widthTracksTextView container imposes at large widths.
+func richTextResolvedLayout(proposalWidth: CGFloat?, storage: NSTextStorage?) -> (width: CGFloat, naturalSize: CGSize?) {
+    if let proposed = proposalWidth, proposed != .infinity {
+        return (max(0, proposed), nil)
+    }
+    let ideal = storage?.size() ?? .zero
+    return (ceil(ideal.width), CGSize(width: ceil(ideal.width), height: ceil(ideal.height)))
+}
+
+// The TextKit 1 sizeThatFits body (both platform twins delegate here). Because TK1's decorations are
+// draw-only (RichTextLayoutManager overrides drawing only, never glyph geometry), the unwrapped size() from
+// richTextResolvedLayout is the exact ideal size, so the ideal case returns it directly - one measurement
+// pass, no second layout. A finite proposal is measured by the layout manager at that width.
+private func richTextFittingSize(storage: NSTextStorage?, container: NSTextContainer,
+                                 layoutManager: NSLayoutManager, proposalWidth: CGFloat?,
+                                 liveWidth: CGFloat) -> CGSize {
+    let (width, naturalSize) = richTextResolvedLayout(proposalWidth: proposalWidth, storage: storage)
+    if let naturalSize {
+        // Keep the container at a drawable, non-zero width for the eventual lazy draw - the on-screen width
+        // if the view already has a frame, else the natural width - mirroring the finite branch's restore.
+        container.size = CGSize(width: liveWidth > 0 ? liveWidth : max(1, width), height: CGFloat.greatestFiniteMagnitude)
+        return naturalSize
+    }
+    container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+    layoutManager.ensureLayout(for: container)
+    let height = ceil(layoutManager.usedRect(for: container).height)
+    // Measuring mutates the LIVE container, and SwiftUI probes several widths (including 0) in one pass.
+    // widthTracksTextView only re-tracks the container on an actual frame CHANGE, so if the final probe is
+    // not the final frame width and the frame is already correct, the view would draw with the probe's
+    // geometry - a width-0 container draws no glyphs at all. Restore the on-screen width after measuring so
+    // drawing never uses probe state.
+    if liveWidth > 0, liveWidth != width {
+        container.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
+    }
+    return CGSize(width: width, height: height)
+}
+
 #if canImport(AppKit)
 
 private struct RichTextRepresentableTK1:NSViewRepresentable {
@@ -154,20 +203,9 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
         guard let container = nsView.textContainer, let layoutManager = nsView.layoutManager else {
             return nil
         }
-        let width = proposal.width ?? container.size.width
-        container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        layoutManager.ensureLayout(for: container)
-        let height = ceil(layoutManager.usedRect(for: container).height)
-        // Measuring mutates the LIVE container, and SwiftUI probes several widths (including 0) in one
-        // pass. widthTracksTextView only re-tracks the container on an actual frame CHANGE, so if the
-        // final probe isn't the final frame width and the frame is already correct, the view would draw
-        // with the probe's geometry - a width-0 container draws no glyphs at all. Restore the on-screen
-        // width after measuring so drawing never uses probe state.
-        let liveWidth = nsView.bounds.width
-        if liveWidth > 0, liveWidth != width {
-            container.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
-        }
-        return CGSize(width: width, height: height)
+        return richTextFittingSize(storage: context.coordinator.storage, container: container,
+                                   layoutManager: layoutManager, proposalWidth: proposal.width,
+                                   liveWidth: nsView.bounds.width)
     }
 }
 
@@ -219,16 +257,9 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let stack = context.coordinator
-        let width = proposal.width ?? uiView.bounds.width
-        stack.container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        stack.layoutManager.ensureLayout(for: stack.container)
-        let height = ceil(stack.layoutManager.usedRect(for: stack.container).height)
-        // See the AppKit twin: restore the on-screen width so drawing never uses probe geometry.
-        let liveWidth = uiView.bounds.width
-        if liveWidth > 0, liveWidth != width {
-            stack.container.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
-        }
-        return CGSize(width: width, height: height)
+        return richTextFittingSize(storage: stack.storage, container: stack.container,
+                                   layoutManager: stack.layoutManager, proposalWidth: proposal.width,
+                                   liveWidth: uiView.bounds.width)
     }
 }
 

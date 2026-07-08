@@ -77,7 +77,12 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
-        let width = proposal.width ?? nsView.bounds.width
+        // Resolve the width like the TK1 twin (see richTextResolvedLayout): a finite proposal wraps to it, an
+        // unspecified / infinite one sizes to the natural content width - never the live bounds width, which
+        // is 0 on the first layout pass. TK2 lays decorations out through a custom fragment whose height can
+        // differ from NSAttributedString.size() (code blocks, quotes), so only the WIDTH is borrowed; the
+        // height is measured below via the TK2 fragments.
+        let width = richTextResolvedLayout(proposalWidth: proposal.width, storage: nsView.textStorage).width
         nsView.textContainer?.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         let height: CGFloat
         if let layoutManager = nsView.textLayoutManager {
@@ -160,7 +165,9 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
-        let width = proposal.width ?? uiView.bounds.width
+        // See the AppKit twin: borrow only the WIDTH from the shared resolver (natural content width for an
+        // unspecified / infinite proposal, never the live bounds width); TK2 measures its own height below.
+        let width = richTextResolvedLayout(proposalWidth: proposal.width, storage: uiView.textStorage).width
         uiView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         let height: CGFloat
         if let layoutManager = uiView.textLayoutManager {
