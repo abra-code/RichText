@@ -148,6 +148,26 @@ private func richTextFittingSize(storage: NSTextStorage?, container: NSTextConta
 
 #if canImport(AppKit)
 
+// Read-only text view that keeps its glyphs pinned to the top of its bounds. TextKit 1 can lay the first
+// line fragment out below y = 0 (usedRect.minY > 0) - observed intermittently when a persisted transcript
+// materializes its bubbles in a LazyVStack and the layout is measured against a transiently different frame,
+// after which it sticks until the row is re-created. NSTextView's default textContainerOrigin does not undo
+// that offset, so the text renders low inside the bubble. Subtracting the offset draws the text from the top;
+// when there is no offset (the normal case, minY == 0) this is a no-op.
+final class RichTextTopAlignedTextView: NSTextView {
+    private var isMeasuringOrigin = false
+    override var textContainerOrigin: NSPoint {
+        let base = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
+        // Guard against re-entrancy: querying usedRect forces layout, which can query this origin back.
+        guard !isMeasuringOrigin, let layoutManager, let textContainer else {
+            return base
+        }
+        isMeasuringOrigin = true
+        defer { isMeasuringOrigin = false }
+        return NSPoint(x: base.x, y: base.y - layoutManager.usedRect(for: textContainer).minY)
+    }
+}
+
 private struct RichTextRepresentableTK1:NSViewRepresentable {
     let attributed: NSAttributedString
 
@@ -158,7 +178,7 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextView {
         let stack = context.coordinator
         stack.storage.setAttributedString(attributed)
-        let textView = NSTextView(frame: .zero, textContainer: stack.container)
+        let textView = RichTextTopAlignedTextView(frame: .zero, textContainer: stack.container)
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false

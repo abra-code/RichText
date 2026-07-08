@@ -120,6 +120,37 @@ final class SelectableTextView: NSTextView {
         gestureRecognizer.delaysPrimaryMouseButtonEvents = false
         super.addGestureRecognizer(gestureRecognizer)
     }
+
+    // Keep glyphs pinned to the top of the view - the TextKit 2 twin of RichTextTopAlignedTextView. If the
+    // layout leaves a gap above the first line/fragment, the text renders low inside the chat bubble; subtract
+    // that offset so it always draws from the top (a no-op when there is no offset). The offset is the top of
+    // the first TK2 layout fragment; if the view has downgraded itself to TextKit 1 (NSTextTable content), fall
+    // back to the TK1 used rect, matching the sizeThatFits height path.
+    private var isMeasuringOrigin = false
+    override var textContainerOrigin: NSPoint {
+        let base = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
+        // Guard against re-entrancy: forcing layout below can query this origin back.
+        guard !isMeasuringOrigin else {
+            return base
+        }
+        isMeasuringOrigin = true
+        defer { isMeasuringOrigin = false }
+        let top: CGFloat
+        if let layoutManager = textLayoutManager {
+            var firstMinY: CGFloat = 0
+            layoutManager.enumerateTextLayoutFragments(from: layoutManager.documentRange.location,
+                                                       options: [.ensuresLayout]) { fragment in
+                firstMinY = fragment.layoutFragmentFrame.minY
+                return false   // first fragment only - it is the topmost
+            }
+            top = firstMinY
+        } else if let layoutManager, let textContainer {
+            top = layoutManager.usedRect(for: textContainer).minY
+        } else {
+            return base
+        }
+        return NSPoint(x: base.x, y: base.y - top)
+    }
 }
 
 #elseif canImport(UIKit)
