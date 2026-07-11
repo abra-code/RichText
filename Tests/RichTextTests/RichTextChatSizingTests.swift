@@ -70,6 +70,57 @@ final class RichTextChatSizingTests: XCTestCase {
         }
     }
 
+    // `.widthBehavior(.hug)` inside a `.frame(maxWidth:)` is the messaging-bubble idiom: a SHORT message must
+    // hug its content (bubble narrower than the cap) rather than fill the column, while still drawing glyphs.
+    // Both TextKit backends share the width policy, so both are exercised.
+    @MainActor
+    func testHugShortMessageHugsBelowTheCap() {
+        let cap: CGFloat = 260
+        let windowWidth: CGFloat = 720
+        for engine in [RichTextEngine.textKit1, .textKit2] {
+            let bubble = HStack {
+                RichText(markdown: "hey", engine: engine)
+                    .widthBehavior(.hug)
+                    .frame(maxWidth: cap, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+            let (textView, drawn) = host(bubble, window: CGSize(width: windowWidth, height: 120))
+            let width = textView?.frame.width ?? 0
+            XCTAssertGreaterThan(drawn, 20, "\(engine): hugging bubble drew no glyphs")
+            XCTAssertGreaterThan(width, 5, "\(engine): hugging bubble collapsed to zero width")
+            XCTAssertLessThan(width, cap - 40, "\(engine): short message did not hug - it filled the cap (\(width))")
+        }
+    }
+
+    // The same `.hug` bubble with a LONG message must NOT overflow the cap: it wraps at `maxWidth` (unlike
+    // fixedSize hugging, which never wraps) and grows taller. Assert the width is clamped to the cap and the
+    // wrapped height matches an independent measurement at the content width.
+    @MainActor
+    func testHugLongMessageWrapsAtTheCap() {
+        let cap: CGFloat = 260
+        let bubble = RichText(markdown: sample, engine: .textKit1)
+            .widthBehavior(.hug)
+            .frame(maxWidth: cap, alignment: .leading)
+        let (textView, drawn) = host(bubble, window: CGSize(width: cap + 120, height: 300))
+        let width = textView?.frame.width ?? 0
+
+        let attributed = RichTextAttributedString.make(RichTextDocument(markdown: sample), engine: .textKit1)
+        let storage = NSTextStorage(attributedString: attributed)
+        let lm = NSLayoutManager()
+        storage.addLayoutManager(lm)
+        let container = NSTextContainer(size: CGSize(width: cap, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        lm.addTextContainer(container)
+        lm.ensureLayout(for: container)
+        let expected = ceil(lm.usedRect(for: container).height)
+
+        XCTAssertGreaterThan(drawn, 100, "long hugging bubble drew no glyphs")
+        XCTAssertLessThanOrEqual(width, cap + 1, "long message overflowed the cap (\(width) > \(cap))")
+        XCTAssertGreaterThan(expected, 30, "sample should wrap to multiple lines at this cap")
+        XCTAssertEqual(textView?.frame.height ?? 0, expected, accuracy: 4,
+                       "wrapped height mismatch - hug did not wrap at the cap")
+    }
+
     // A full-width bubble (the chat transcript row) must get a height that matches the text wrapped at the
     // on-screen width. Before the fix, the ideal-size probe could report a one-line height that a LazyVStack
     // cached, clipping a multi-line message. Here the text wraps to multiple lines at the row width; assert

@@ -24,10 +24,22 @@ public enum RichTextEngine: Sendable, Hashable {
     case textKit2
 }
 
+/// How a RichText view resolves its width against the width SwiftUI proposes.
+/// - `fill` (default): expands to the full proposed width, left-aligned - block / document layout. A
+///   consumer that wants a full-width column relies on this (e.g. a transcript row with a tinted background).
+/// - `hug`: sizes to the content's natural width, wrapping only when it would exceed the proposal. This is
+///   the messaging-bubble idiom - a short message hugs, a long one wraps at the proposed cap. Pair it with a
+///   `.frame(maxWidth:)` to bound how wide the bubble may grow.
+public enum RichTextWidthBehavior: Sendable, Hashable {
+    case fill
+    case hug
+}
+
 public struct RichText: View {
     private let attributed: NSAttributedString
     private let engine: RichTextEngine
     private let metrics: RichTextDecorationMetrics
+    private var widthBehavior: RichTextWidthBehavior = .fill
     // The VoiceOver reading of the whole document, built from the model (see RichTextAccessibility): images
     // speak their alt text, tables read row by row - neither of which is recoverable from the glyph stream of
     // the single rendered text view.
@@ -54,9 +66,20 @@ public struct RichText: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Returns a copy that resolves its width with `behavior`. Defaults to `.fill`; pass `.hug` for a
+    /// content-hugging bubble (see `RichTextWidthBehavior`).
+    public func widthBehavior(_ behavior: RichTextWidthBehavior) -> RichText {
+        var copy = self
+        copy.widthBehavior = behavior
+        return copy
+    }
+
     public var body: some View {
         content
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // `.fill` expands to the proposed width (the original, default behavior); `.hug` leaves the view
+            // at its content size (the representable's sizeThatFits already hugs). alignment matters only
+            // when filling.
+            .frame(maxWidth: widthBehavior == .fill ? .infinity : nil, alignment: .leading)
             // Render the whole document as ONE static-text element reading `accessibilityText`, ignoring the
             // text view's own accessibility (which would skip image alt text and run table columns together).
             .accessibilityElement(children: .ignore)
@@ -67,9 +90,9 @@ public struct RichText: View {
     private var content: some View {
         switch engine {
         case .textKit1:
-            RichTextRepresentableTK1(attributed: attributed)
+            RichTextRepresentableTK1(attributed: attributed, widthBehavior: widthBehavior)
         case .textKit2:
-            RichTextRepresentableTK2(attributed: attributed, metrics: metrics)
+            RichTextRepresentableTK2(attributed: attributed, metrics: metrics, widthBehavior: widthBehavior)
         }
     }
 }
@@ -110,9 +133,25 @@ private final class TextKitStack {
 // bubble and clipped below it - until a fresh layout was forced (scrolling the row off screen and back). See
 // RichTextChatSizingTests. size() also measures WITHOUT a container, so it avoids the used-width clamp a live
 // widthTracksTextView container imposes at large widths.
-func richTextResolvedLayout(proposalWidth: CGFloat?, storage: NSTextStorage?) -> (width: CGFloat, naturalSize: CGSize?) {
+func richTextResolvedLayout(proposalWidth: CGFloat?, storage: NSTextStorage?,
+                            behavior: RichTextWidthBehavior = .fill) -> (width: CGFloat, naturalSize: CGSize?) {
     if let proposed = proposalWidth, proposed != .infinity {
-        return (max(0, proposed), nil)
+        let cap = max(0, proposed)
+        // Hug: size to the content, but never wider than the proposal. size() measures the natural unwrapped
+        // width without a container (as in the ideal branch below). If it fits within the cap, hug to it and
+        // return the natural size so the caller skips a second layout; if it exceeds the cap, wrap to the cap
+        // and let the caller measure the wrapped height. `.fill` keeps the original policy: use the full cap.
+        // Note: unlike `.fill`, this runs size() on every finite-width probe (SwiftUI probes several per pass);
+        // it is aimed at short bubbles, so the extra measurement is cheap - keep that in mind for huge docs.
+        if behavior == .hug {
+            let ideal = storage?.size() ?? .zero
+            let naturalWidth = ceil(ideal.width)
+            if naturalWidth <= cap {
+                return (naturalWidth, CGSize(width: naturalWidth, height: ceil(ideal.height)))
+            }
+            return (cap, nil)
+        }
+        return (cap, nil)
     }
     let ideal = storage?.size() ?? .zero
     return (ceil(ideal.width), CGSize(width: ceil(ideal.width), height: ceil(ideal.height)))
@@ -124,8 +163,8 @@ func richTextResolvedLayout(proposalWidth: CGFloat?, storage: NSTextStorage?) ->
 // pass, no second layout. A finite proposal is measured by the layout manager at that width.
 private func richTextFittingSize(storage: NSTextStorage?, container: NSTextContainer,
                                  layoutManager: NSLayoutManager, proposalWidth: CGFloat?,
-                                 liveWidth: CGFloat) -> CGSize {
-    let (width, naturalSize) = richTextResolvedLayout(proposalWidth: proposalWidth, storage: storage)
+                                 liveWidth: CGFloat, behavior: RichTextWidthBehavior = .fill) -> CGSize {
+    let (width, naturalSize) = richTextResolvedLayout(proposalWidth: proposalWidth, storage: storage, behavior: behavior)
     if let naturalSize {
         // Keep the container at a drawable, non-zero width for the eventual lazy draw - the on-screen width
         // if the view already has a frame, else the natural width - mirroring the finite branch's restore.
@@ -170,6 +209,7 @@ final class RichTextTopAlignedTextView: NSTextView {
 
 private struct RichTextRepresentableTK1:NSViewRepresentable {
     let attributed: NSAttributedString
+    let widthBehavior: RichTextWidthBehavior
 
     func makeCoordinator() -> TextKitStack {
         TextKitStack()
@@ -225,7 +265,7 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
         }
         return richTextFittingSize(storage: context.coordinator.storage, container: container,
                                    layoutManager: layoutManager, proposalWidth: proposal.width,
-                                   liveWidth: nsView.bounds.width)
+                                   liveWidth: nsView.bounds.width, behavior: widthBehavior)
     }
 }
 
@@ -233,6 +273,7 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
 
 private struct RichTextRepresentableTK1:UIViewRepresentable {
     let attributed: NSAttributedString
+    let widthBehavior: RichTextWidthBehavior
 
     func makeCoordinator() -> TextKitStack {
         TextKitStack()
@@ -279,7 +320,7 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
         let stack = context.coordinator
         return richTextFittingSize(storage: stack.storage, container: stack.container,
                                    layoutManager: stack.layoutManager, proposalWidth: proposal.width,
-                                   liveWidth: uiView.bounds.width)
+                                   liveWidth: uiView.bounds.width, behavior: widthBehavior)
     }
 }
 

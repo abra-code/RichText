@@ -37,6 +37,7 @@ private func measuredHeight(_ layoutManager: NSTextLayoutManager) -> CGFloat {
 struct RichTextRepresentableTK2: NSViewRepresentable {
     let attributed: NSAttributedString
     let metrics: RichTextDecorationMetrics
+    let widthBehavior: RichTextWidthBehavior
 
     func makeCoordinator() -> TextKit2Coordinator {
         TextKit2Coordinator()
@@ -82,7 +83,8 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         // is 0 on the first layout pass. TK2 lays decorations out through a custom fragment whose height can
         // differ from NSAttributedString.size() (code blocks, quotes), so only the WIDTH is borrowed; the
         // height is measured below via the TK2 fragments.
-        let width = richTextResolvedLayout(proposalWidth: proposal.width, storage: nsView.textStorage).width
+        let width = richTextResolvedLayout(proposalWidth: proposal.width, storage: nsView.textStorage,
+                                           behavior: widthBehavior).width
         nsView.textContainer?.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         let height: CGFloat
         if let layoutManager = nsView.textLayoutManager {
@@ -158,6 +160,7 @@ final class SelectableTextView: NSTextView {
 struct RichTextRepresentableTK2: UIViewRepresentable {
     let attributed: NSAttributedString
     let metrics: RichTextDecorationMetrics
+    let widthBehavior: RichTextWidthBehavior
 
     func makeCoordinator() -> TextKit2Coordinator {
         TextKit2Coordinator()
@@ -198,7 +201,8 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         // See the AppKit twin: borrow only the WIDTH from the shared resolver (natural content width for an
         // unspecified / infinite proposal, never the live bounds width); TK2 measures its own height below.
-        let width = richTextResolvedLayout(proposalWidth: proposal.width, storage: uiView.textStorage).width
+        let width = richTextResolvedLayout(proposalWidth: proposal.width, storage: uiView.textStorage,
+                                           behavior: widthBehavior).width
         uiView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         let height: CGFloat
         if let layoutManager = uiView.textLayoutManager {
