@@ -36,6 +36,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Bundle the shared Fixtures/markdown corpus as demo assets so the gallery renders the full fixture set -
+    // the same documents the Stage C parity suite pins. android/demo -> ../../Fixtures/markdown is the repo corpus.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../Fixtures/markdown")
+        }
+    }
 }
 
 kotlin {
