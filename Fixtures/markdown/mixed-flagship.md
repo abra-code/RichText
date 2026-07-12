@@ -36,7 +36,7 @@ func greet(_ name: String) -> String {
 
 An image below:
 
-![architecture](https://example.test/arch.png)
+![abracadabra](https://abracode.com/ActionUI/abracadabra.png)
 
 A closing paragraph with a hard break here\
 and a final line.

@@ -337,8 +337,8 @@
     "inlines": [
       {
         "type": "image",
-        "alt": "architecture",
-        "url": "https://example.test/arch.png"
+        "alt": "abracadabra",
+        "url": "https://abracode.com/ActionUI/abracadabra.png"
       }
     ]
   },
