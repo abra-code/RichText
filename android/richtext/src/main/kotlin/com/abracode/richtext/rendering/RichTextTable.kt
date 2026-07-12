@@ -3,7 +3,6 @@ package com.abracode.richtext.rendering
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -14,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -42,13 +40,13 @@ internal fun RichTextTableView(block: RichTextBlock.Table, color: Color, scope: 
         listOf(block.headers to true) + block.rows.map { it to false }
 
     val cellStyle = TextStyle(fontSize = scope.bodySize, color = color)
-    // Cell text is built with the inline builder (header cells bold). Any image in a cell falls back to its alt
-    // text (no inline-content map here), which is acceptable for the rare image-in-table case. Memoized so
-    // streaming re-renders do not rebuild every cell's AnnotatedString each recomposition.
-    val cells: List<List<AnnotatedString>> = remember(block, color, scope.colors) {
+    // Cell text is built with the inline builder (header cells bold), carrying code-span ranges so cells get the
+    // same rounded pills as body text. Any image in a cell falls back to its alt text (no inline-content map
+    // here), acceptable for the rare image-in-table case. Memoized so streaming re-renders do not rebuild cells.
+    val cells: List<List<RichTextInlineResult>> = remember(block, color, scope.colors) {
         allRows.map { (row, header) ->
             (0 until columns).map { c ->
-                buildRichInlines(row.getOrNull(c) ?: emptyList(), scope.colors, baseColor = color, initialBold = header).text
+                buildRichInlines(row.getOrNull(c) ?: emptyList(), scope.colors, baseColor = color, initialBold = header)
             }
         }
     }
@@ -66,7 +64,7 @@ internal fun RichTextTableView(block: RichTextBlock.Table, color: Color, scope: 
             content = {
                 for (r in allRows.indices) {
                     for (c in 0 until columns) {
-                        Text(cells[r][c], style = cellStyle)
+                        CodePillText(cells[r][c], style = cellStyle, codeFill = scope.colors.codeFill)
                     }
                 }
             },

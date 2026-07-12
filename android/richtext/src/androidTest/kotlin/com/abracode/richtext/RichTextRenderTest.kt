@@ -126,4 +126,44 @@ class RichTextRenderTest {
         composeTestRule.onNodeWithText("inner quote", substring = true, useUnmergedTree = true).assertExists()
         composeTestRule.onNodeWithText("nested ordinal", substring = true, useUnmergedTree = true).assertExists()
     }
+
+    // --- Stage E: inline-code pills + table hardening ---
+
+    @Test fun inlineCodePillRenders() {
+        // The rounded pill is painted behind the code span; the code text still renders as a locatable node.
+        setMarkdown("Call `reset()` to start over, and `flush()` after.")
+        composeTestRule.onNodeWithText("reset()", substring = true, useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithText("flush()", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun singleColumnTableRenders() {
+        setMarkdown("| Only |\n| --- |\n| one |\n| two |")
+        composeTestRule.onNodeWithText("Only", substring = true, useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithText("one", substring = true, useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithText("two", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun headerOnlyTableRenders() {
+        setMarkdown("| H1 | H2 |\n| --- | --- |")
+        composeTestRule.onNodeWithText("H1", substring = true, useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithText("H2", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun tableWithEmptyCellsRenders() {
+        setMarkdown("| A | B |\n| --- | --- |\n|  | filled |\n| here |  |")
+        composeTestRule.onNodeWithText("filled", substring = true, useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithText("here", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun tableWithVeryWideCellWrapsWithoutCrashing() {
+        val wide = "word ".repeat(80)
+        setMarkdown("| Short | Wide |\n| --- | --- |\n| a | $wide |")
+        composeTestRule.onNodeWithText("Short", substring = true, useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithText("word", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun tableCellWithCodeSpanRenders() {
+        setMarkdown("| Name | Value |\n| --- | --- |\n| `key` | 1 |")
+        composeTestRule.onNodeWithText("key", substring = true, useUnmergedTree = true).assertExists()
+    }
 }

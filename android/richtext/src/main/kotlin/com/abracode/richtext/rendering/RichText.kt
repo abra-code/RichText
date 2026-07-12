@@ -19,12 +19,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -32,6 +34,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -271,7 +274,67 @@ internal fun RichInlineText(
     modifier: Modifier = Modifier,
 ) {
     val inlineContent = rememberInlineImageContent(result.images, scope)
-    Text(text = result.text, style = style, inlineContent = inlineContent, modifier = modifier)
+    CodePillText(result, style, scope.colors.codeFill, modifier, inlineContent)
+}
+
+// Renders inline text, painting a rounded pill (radius 3, 2dp horizontal / 1dp vertical padding, codeFill)
+// behind every inline-code span - the Stage E phase-2 replacement for the flat square background. The pill is
+// drawn per line segment from the text layout, so a code span that wraps across a line break gets a pill on each
+// line, matching the Apple painter. Falls back to a plain Text when there are no code spans (the common case).
+@Composable
+internal fun CodePillText(
+    result: RichTextInlineResult,
+    style: TextStyle,
+    codeFill: Color,
+    modifier: Modifier = Modifier,
+    inlineContent: Map<String, InlineTextContent> = emptyMap(),
+) {
+    if (result.codeSpans.isEmpty()) {
+        Text(text = result.text, style = style, inlineContent = inlineContent, modifier = modifier)
+        return
+    }
+    val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
+        text = result.text,
+        style = style,
+        inlineContent = inlineContent,
+        onTextLayout = { layout.value = it },
+        modifier = modifier.drawBehind {
+            val result2 = layout.value ?: return@drawBehind
+            val hPad = 2.dp.toPx()
+            val vPad = 1.dp.toPx()
+            val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+            for (span in result.codeSpans) {
+                for (rect in codeSpanRects(result2, span.start, span.end)) {
+                    drawRoundRect(
+                        color = codeFill,
+                        topLeft = Offset(rect.left - hPad, rect.top - vPad),
+                        size = Size(rect.width + 2 * hPad, rect.height + 2 * vPad),
+                        cornerRadius = radius,
+                    )
+                }
+            }
+        },
+    )
+}
+
+// Per-line-segment bounding rects for the character range [start, end) in a laid-out text. One rect per line the
+// range spans, so a wrapped code span yields multiple pills. Range-clamped to the laid-out text length.
+private fun codeSpanRects(layout: TextLayoutResult, start: Int, end: Int): List<Rect> {
+    val safeEnd = minOf(end, layout.layoutInput.text.length)
+    if (safeEnd <= start) return emptyList()
+    val rects = ArrayList<Rect>()
+    val firstLine = layout.getLineForOffset(start)
+    val lastLine = layout.getLineForOffset(safeEnd - 1)
+    for (line in firstLine..lastLine) {
+        val lineStart = maxOf(start, layout.getLineStart(line))
+        val lineEnd = minOf(safeEnd, layout.getLineEnd(line, visibleEnd = true))
+        if (lineEnd <= lineStart) continue
+        val left = layout.getHorizontalPosition(lineStart, usePrimaryDirection = true)
+        val right = layout.getHorizontalPosition(lineEnd, usePrimaryDirection = true)
+        rects.add(Rect(minOf(left, right), layout.getLineTop(line), maxOf(left, right), layout.getLineBottom(line)))
+    }
+    return rects
 }
 
 // Builds the InlineTextContent map for images that appear inline among text. Each reserves a box sized from the
