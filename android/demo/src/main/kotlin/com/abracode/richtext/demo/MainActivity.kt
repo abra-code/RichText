@@ -3,41 +3,76 @@ package com.abracode.richtext.demo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.abracode.richtext.rendering.RichTextTheme
+import com.abracode.richtext.rendering.RichText
 
 /**
- * Stage A shell. Confirms the toolchain end-to-end: the demo app applies the Compose plugin, depends on the
- * :richtext library (referenced below via [RichTextTheme]), which in turn resolves AsyncImageCache through the
- * sibling composite build. Stage F replaces this with the document gallery / streaming simulator screens that
- * mirror Demo/.
+ * Demo shell. Renders a feature-tour document through the Stage D Compose renderer. Stage F expands this into
+ * the document gallery / streaming simulator / theme-toggle screens that mirror Demo/.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { ScaffoldScreen() }
+        setContent { DemoScreen() }
     }
 }
 
 @Composable
-private fun ScaffoldScreen() {
-    // Touch the library type so the :richtext dependency is exercised at compile and link time, not just declared.
-    val theme = RichTextTheme.Default
+private fun DemoScreen() {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("RichText for Android", style = MaterialTheme.typography.headlineSmall)
-                Text("Stage A scaffolding - renderer arrives in Stage D.")
-                Text("Default indent step: ${theme.indentStep.toInt()}dp")
-            }
+            RichText(
+                markdown = SAMPLE,
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+            )
         }
     }
 }
+
+private val SAMPLE = """
+    # RichText for Android
+
+    A feature tour with **strong**, *emphasis*, ***both***, ~~strikethrough~~, `inline code`,
+    a [link](https://swift.org), and an autolinked https://example.com.
+
+    ## Code
+
+    ```kotlin
+    fun greet(name: String): String {
+        return "Hello, ${'$'}name!"  // a comment
+    }
+    ```
+
+    > A block quote that renders with a bar,
+    > > and a nested quote inside it.
+
+    ## Lists
+
+    1. Parse the markdown
+    2. Build the model
+       - totality is sacred
+       - bounds are preserved
+    3. Render per block
+
+    ## A table
+
+    | Block | Renders as |
+    | :-- | :-: |
+    | heading | sized text |
+    | code | a card |
+    | table | a grid |
+
+    ---
+
+    The end.
+""".trimIndent()
