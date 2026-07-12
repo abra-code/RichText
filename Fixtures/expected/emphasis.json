@@ -1,0 +1,307 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Plain "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "emphasis"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "underscore emphasis"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Plain "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "text",
+            "value": "strong"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "text",
+            "value": "underscore strong"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Both "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": [
+              {
+                "type": "text",
+                "value": "bold italic"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": [
+              {
+                "type": "text",
+                "value": "underscore both"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Nested "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "text",
+            "value": "strong with "
+          },
+          {
+            "type": "emphasis",
+            "children": [
+              {
+                "type": "text",
+                "value": "emphasis"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "value": " inside"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Nested "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "emphasis with "
+          }
+        ]
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "strong"
+          }
+        ]
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": " inside"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Strikethrough "
+      },
+      {
+        "type": "strikethrough",
+        "children": [
+          {
+            "type": "text",
+            "value": "struck text"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Strikethrough with "
+      },
+      {
+        "type": "strikethrough",
+        "children": [
+          {
+            "type": "text",
+            "value": "nested "
+          },
+          {
+            "type": "strong",
+            "children": [
+              {
+                "type": "text",
+                "value": "strong"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " inside."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Unterminated **strong renders literally."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Unterminated *emphasis and ~~strike stay literal."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Intraword em"
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "pha"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": "sis and a"
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "b"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": "c behavior."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An asterisk * alone is literal."
+      }
+    ]
+  }
+]

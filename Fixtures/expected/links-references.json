@@ -1,0 +1,222 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An inline "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "link to Swift"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A link with "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "strong",
+            "children": [
+              {
+                "type": "text",
+                "value": "bold"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "value": " and "
+          },
+          {
+            "type": "emphasis",
+            "children": [
+              {
+                "type": "text",
+                "value": "italic"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "value": " text"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": " inside it."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "mailto link"
+          }
+        ],
+        "url": "mailto:someone@example.com"
+      },
+      {
+        "type": "text",
+        "value": " and a "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "tel link"
+          }
+        ],
+        "url": "tel:+15551234567"
+      },
+      {
+        "type": "text",
+        "value": "."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A disallowed "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "javascript link"
+          }
+        ],
+        "url": "javascript:alert(1)"
+      },
+      {
+        "type": "text",
+        "value": " renders as text."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "relative link"
+          }
+        ],
+        "url": "/local/path"
+      },
+      {
+        "type": "text",
+        "value": " with no scheme renders as text."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Reference links resolve from a definition:"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "full reference"
+          }
+        ],
+        "url": "https://swift.org/reference"
+      },
+      {
+        "type": "text",
+        "value": " and a "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "collapsed reference"
+          }
+        ],
+        "url": "https://swift.org/collapsed"
+      },
+      {
+        "type": "text",
+        "value": " and a "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "shortcut"
+          }
+        ],
+        "url": "https://swift.org/shortcut"
+      },
+      {
+        "type": "text",
+        "value": " too."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An [undefined reference][missing] stays literal."
+      }
+    ]
+  }
+]

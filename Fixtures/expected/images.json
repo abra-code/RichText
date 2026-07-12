@@ -1,0 +1,89 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A block image on its own line:"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "image",
+        "alt": "a remote diagram",
+        "url": "https://example.test/diagram.png"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An inline "
+      },
+      {
+        "type": "image",
+        "alt": "small icon",
+        "url": "https://example.test/icon.png"
+      },
+      {
+        "type": "text",
+        "value": " inside a sentence."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An image with an empty alt: "
+      },
+      {
+        "type": "image",
+        "alt": "",
+        "url": "https://example.test/nameless.png"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A data-URI image "
+      },
+      {
+        "type": "image",
+        "alt": "pixel",
+        "url": "data:image/png;base64,iVBORw0KGgo="
+      },
+      {
+        "type": "text",
+        "value": " inline."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A disallowed file image "
+      },
+      {
+        "type": "image",
+        "alt": "local",
+        "url": "file:///etc/passwd"
+      },
+      {
+        "type": "text",
+        "value": " falls back to alt text."
+      }
+    ]
+  }
+]

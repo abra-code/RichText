@@ -60,6 +60,13 @@ android {
     }
 }
 
+// Stage C parity: the JVM unit suite reads the SAME Fixtures/ the Swift emitter wrote (repo root, one level up
+// from this Gradle root at android/). Pass an absolute path so the test never depends on the JVM working
+// directory. rootDir is android/ (where settings.gradle.kts lives); its parent is the repo root.
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    systemProperty("richtext.fixtures.dir", rootDir.parentFile.resolve("Fixtures").absolutePath)
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)

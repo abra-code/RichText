@@ -1,0 +1,130 @@
+[
+  {
+    "type": "heading",
+    "level": 1,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Heading one"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Heading two"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 3,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Heading three"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 4,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Heading four"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 5,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Heading five"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 6,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Heading six"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "####### Seven hashes is not a heading"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "#No space after hash"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 1,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Leading spaces before text"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Closing hashes are stripped"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 3,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Closing hashes with trailing spaces"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Not a close # in the middle"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 1,
+    "inlines": []
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": []
+  }
+]

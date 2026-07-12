@@ -1,0 +1,146 @@
+[
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "A single-line quote."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "A quote that spans two lines folded together."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "Outer quote"
+          }
+        ]
+      },
+      {
+        "type": "blockQuote",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "inlines": [
+              {
+                "type": "text",
+                "value": "Nested quote still nested"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "back to outer."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "A quote with "
+          },
+          {
+            "type": "strong",
+            "children": [
+              {
+                "type": "text",
+                "value": "strong"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "value": " and a "
+          },
+          {
+            "type": "code",
+            "value": "code span"
+          },
+          {
+            "type": "text",
+            "value": " inside."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "A quote containing a list:"
+          }
+        ]
+      },
+      {
+        "type": "list",
+        "ordered": false,
+        "start": 1,
+        "tight": true,
+        "items": [
+          [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "value": "item one"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "value": "item two"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  }
+]

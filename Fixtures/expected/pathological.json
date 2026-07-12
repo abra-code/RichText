@@ -1,0 +1,1052 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Block-nesting BELOW the cap (blockquote depth 40, fully parsed):"
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "blockQuote",
+        "blocks": [
+          {
+            "type": "blockQuote",
+            "blocks": [
+              {
+                "type": "blockQuote",
+                "blocks": [
+                  {
+                    "type": "blockQuote",
+                    "blocks": [
+                      {
+                        "type": "blockQuote",
+                        "blocks": [
+                          {
+                            "type": "blockQuote",
+                            "blocks": [
+                              {
+                                "type": "blockQuote",
+                                "blocks": [
+                                  {
+                                    "type": "blockQuote",
+                                    "blocks": [
+                                      {
+                                        "type": "blockQuote",
+                                        "blocks": [
+                                          {
+                                            "type": "blockQuote",
+                                            "blocks": [
+                                              {
+                                                "type": "blockQuote",
+                                                "blocks": [
+                                                  {
+                                                    "type": "blockQuote",
+                                                    "blocks": [
+                                                      {
+                                                        "type": "blockQuote",
+                                                        "blocks": [
+                                                          {
+                                                            "type": "blockQuote",
+                                                            "blocks": [
+                                                              {
+                                                                "type": "blockQuote",
+                                                                "blocks": [
+                                                                  {
+                                                                    "type": "blockQuote",
+                                                                    "blocks": [
+                                                                      {
+                                                                        "type": "blockQuote",
+                                                                        "blocks": [
+                                                                          {
+                                                                            "type": "blockQuote",
+                                                                            "blocks": [
+                                                                              {
+                                                                                "type": "blockQuote",
+                                                                                "blocks": [
+                                                                                  {
+                                                                                    "type": "blockQuote",
+                                                                                    "blocks": [
+                                                                                      {
+                                                                                        "type": "blockQuote",
+                                                                                        "blocks": [
+                                                                                          {
+                                                                                            "type": "blockQuote",
+                                                                                            "blocks": [
+                                                                                              {
+                                                                                                "type": "blockQuote",
+                                                                                                "blocks": [
+                                                                                                  {
+                                                                                                    "type": "blockQuote",
+                                                                                                    "blocks": [
+                                                                                                      {
+                                                                                                        "type": "blockQuote",
+                                                                                                        "blocks": [
+                                                                                                          {
+                                                                                                            "type": "blockQuote",
+                                                                                                            "blocks": [
+                                                                                                              {
+                                                                                                                "type": "blockQuote",
+                                                                                                                "blocks": [
+                                                                                                                  {
+                                                                                                                    "type": "blockQuote",
+                                                                                                                    "blocks": [
+                                                                                                                      {
+                                                                                                                        "type": "blockQuote",
+                                                                                                                        "blocks": [
+                                                                                                                          {
+                                                                                                                            "type": "blockQuote",
+                                                                                                                            "blocks": [
+                                                                                                                              {
+                                                                                                                                "type": "blockQuote",
+                                                                                                                                "blocks": [
+                                                                                                                                  {
+                                                                                                                                    "type": "blockQuote",
+                                                                                                                                    "blocks": [
+                                                                                                                                      {
+                                                                                                                                        "type": "blockQuote",
+                                                                                                                                        "blocks": [
+                                                                                                                                          {
+                                                                                                                                            "type": "blockQuote",
+                                                                                                                                            "blocks": [
+                                                                                                                                              {
+                                                                                                                                                "type": "blockQuote",
+                                                                                                                                                "blocks": [
+                                                                                                                                                  {
+                                                                                                                                                    "type": "blockQuote",
+                                                                                                                                                    "blocks": [
+                                                                                                                                                      {
+                                                                                                                                                        "type": "blockQuote",
+                                                                                                                                                        "blocks": [
+                                                                                                                                                          {
+                                                                                                                                                            "type": "blockQuote",
+                                                                                                                                                            "blocks": [
+                                                                                                                                                              {
+                                                                                                                                                                "type": "blockQuote",
+                                                                                                                                                                "blocks": [
+                                                                                                                                                                  {
+                                                                                                                                                                    "type": "paragraph",
+                                                                                                                                                                    "inlines": [
+                                                                                                                                                                      {
+                                                                                                                                                                        "type": "text",
+                                                                                                                                                                        "value": "deep but under the 48 cap"
+                                                                                                                                                                      }
+                                                                                                                                                                    ]
+                                                                                                                                                                  }
+                                                                                                                                                                ]
+                                                                                                                                                              }
+                                                                                                                                                            ]
+                                                                                                                                                          }
+                                                                                                                                                        ]
+                                                                                                                                                      }
+                                                                                                                                                    ]
+                                                                                                                                                  }
+                                                                                                                                                ]
+                                                                                                                                              }
+                                                                                                                                            ]
+                                                                                                                                          }
+                                                                                                                                        ]
+                                                                                                                                      }
+                                                                                                                                    ]
+                                                                                                                                  }
+                                                                                                                                ]
+                                                                                                                              }
+                                                                                                                            ]
+                                                                                                                          }
+                                                                                                                        ]
+                                                                                                                      }
+                                                                                                                    ]
+                                                                                                                  }
+                                                                                                                ]
+                                                                                                              }
+                                                                                                            ]
+                                                                                                          }
+                                                                                                        ]
+                                                                                                      }
+                                                                                                    ]
+                                                                                                  }
+                                                                                                ]
+                                                                                              }
+                                                                                            ]
+                                                                                          }
+                                                                                        ]
+                                                                                      }
+                                                                                    ]
+                                                                                  }
+                                                                                ]
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Block-nesting ABOVE the cap (blockquote depth 60, both bail at 48):"
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "blockQuote",
+        "blocks": [
+          {
+            "type": "blockQuote",
+            "blocks": [
+              {
+                "type": "blockQuote",
+                "blocks": [
+                  {
+                    "type": "blockQuote",
+                    "blocks": [
+                      {
+                        "type": "blockQuote",
+                        "blocks": [
+                          {
+                            "type": "blockQuote",
+                            "blocks": [
+                              {
+                                "type": "blockQuote",
+                                "blocks": [
+                                  {
+                                    "type": "blockQuote",
+                                    "blocks": [
+                                      {
+                                        "type": "blockQuote",
+                                        "blocks": [
+                                          {
+                                            "type": "blockQuote",
+                                            "blocks": [
+                                              {
+                                                "type": "blockQuote",
+                                                "blocks": [
+                                                  {
+                                                    "type": "blockQuote",
+                                                    "blocks": [
+                                                      {
+                                                        "type": "blockQuote",
+                                                        "blocks": [
+                                                          {
+                                                            "type": "blockQuote",
+                                                            "blocks": [
+                                                              {
+                                                                "type": "blockQuote",
+                                                                "blocks": [
+                                                                  {
+                                                                    "type": "blockQuote",
+                                                                    "blocks": [
+                                                                      {
+                                                                        "type": "blockQuote",
+                                                                        "blocks": [
+                                                                          {
+                                                                            "type": "blockQuote",
+                                                                            "blocks": [
+                                                                              {
+                                                                                "type": "blockQuote",
+                                                                                "blocks": [
+                                                                                  {
+                                                                                    "type": "blockQuote",
+                                                                                    "blocks": [
+                                                                                      {
+                                                                                        "type": "blockQuote",
+                                                                                        "blocks": [
+                                                                                          {
+                                                                                            "type": "blockQuote",
+                                                                                            "blocks": [
+                                                                                              {
+                                                                                                "type": "blockQuote",
+                                                                                                "blocks": [
+                                                                                                  {
+                                                                                                    "type": "blockQuote",
+                                                                                                    "blocks": [
+                                                                                                      {
+                                                                                                        "type": "blockQuote",
+                                                                                                        "blocks": [
+                                                                                                          {
+                                                                                                            "type": "blockQuote",
+                                                                                                            "blocks": [
+                                                                                                              {
+                                                                                                                "type": "blockQuote",
+                                                                                                                "blocks": [
+                                                                                                                  {
+                                                                                                                    "type": "blockQuote",
+                                                                                                                    "blocks": [
+                                                                                                                      {
+                                                                                                                        "type": "blockQuote",
+                                                                                                                        "blocks": [
+                                                                                                                          {
+                                                                                                                            "type": "blockQuote",
+                                                                                                                            "blocks": [
+                                                                                                                              {
+                                                                                                                                "type": "blockQuote",
+                                                                                                                                "blocks": [
+                                                                                                                                  {
+                                                                                                                                    "type": "blockQuote",
+                                                                                                                                    "blocks": [
+                                                                                                                                      {
+                                                                                                                                        "type": "blockQuote",
+                                                                                                                                        "blocks": [
+                                                                                                                                          {
+                                                                                                                                            "type": "blockQuote",
+                                                                                                                                            "blocks": [
+                                                                                                                                              {
+                                                                                                                                                "type": "blockQuote",
+                                                                                                                                                "blocks": [
+                                                                                                                                                  {
+                                                                                                                                                    "type": "blockQuote",
+                                                                                                                                                    "blocks": [
+                                                                                                                                                      {
+                                                                                                                                                        "type": "blockQuote",
+                                                                                                                                                        "blocks": [
+                                                                                                                                                          {
+                                                                                                                                                            "type": "blockQuote",
+                                                                                                                                                            "blocks": [
+                                                                                                                                                              {
+                                                                                                                                                                "type": "blockQuote",
+                                                                                                                                                                "blocks": [
+                                                                                                                                                                  {
+                                                                                                                                                                    "type": "blockQuote",
+                                                                                                                                                                    "blocks": [
+                                                                                                                                                                      {
+                                                                                                                                                                        "type": "blockQuote",
+                                                                                                                                                                        "blocks": [
+                                                                                                                                                                          {
+                                                                                                                                                                            "type": "blockQuote",
+                                                                                                                                                                            "blocks": [
+                                                                                                                                                                              {
+                                                                                                                                                                                "type": "blockQuote",
+                                                                                                                                                                                "blocks": [
+                                                                                                                                                                                  {
+                                                                                                                                                                                    "type": "blockQuote",
+                                                                                                                                                                                    "blocks": [
+                                                                                                                                                                                      {
+                                                                                                                                                                                        "type": "blockQuote",
+                                                                                                                                                                                        "blocks": [
+                                                                                                                                                                                          {
+                                                                                                                                                                                            "type": "blockQuote",
+                                                                                                                                                                                            "blocks": [
+                                                                                                                                                                                              {
+                                                                                                                                                                                                "type": "blockQuote",
+                                                                                                                                                                                                "blocks": [
+                                                                                                                                                                                                  {
+                                                                                                                                                                                                    "type": "blockQuote",
+                                                                                                                                                                                                    "blocks": [
+                                                                                                                                                                                                      {
+                                                                                                                                                                                                        "type": "paragraph",
+                                                                                                                                                                                                        "inlines": [
+                                                                                                                                                                                                          {
+                                                                                                                                                                                                            "type": "text",
+                                                                                                                                                                                                            "value": "> > > > > > > > > > > beyond the 48 cap"
+                                                                                                                                                                                                          }
+                                                                                                                                                                                                        ]
+                                                                                                                                                                                                      }
+                                                                                                                                                                                                    ]
+                                                                                                                                                                                                  }
+                                                                                                                                                                                                ]
+                                                                                                                                                                                              }
+                                                                                                                                                                                            ]
+                                                                                                                                                                                          }
+                                                                                                                                                                                        ]
+                                                                                                                                                                                      }
+                                                                                                                                                                                    ]
+                                                                                                                                                                                  }
+                                                                                                                                                                                ]
+                                                                                                                                                                              }
+                                                                                                                                                                            ]
+                                                                                                                                                                          }
+                                                                                                                                                                        ]
+                                                                                                                                                                      }
+                                                                                                                                                                    ]
+                                                                                                                                                                  }
+                                                                                                                                                                ]
+                                                                                                                                                              }
+                                                                                                                                                            ]
+                                                                                                                                                          }
+                                                                                                                                                        ]
+                                                                                                                                                      }
+                                                                                                                                                    ]
+                                                                                                                                                  }
+                                                                                                                                                ]
+                                                                                                                                              }
+                                                                                                                                            ]
+                                                                                                                                          }
+                                                                                                                                        ]
+                                                                                                                                      }
+                                                                                                                                    ]
+                                                                                                                                  }
+                                                                                                                                ]
+                                                                                                                              }
+                                                                                                                            ]
+                                                                                                                          }
+                                                                                                                        ]
+                                                                                                                      }
+                                                                                                                    ]
+                                                                                                                  }
+                                                                                                                ]
+                                                                                                              }
+                                                                                                            ]
+                                                                                                          }
+                                                                                                        ]
+                                                                                                      }
+                                                                                                    ]
+                                                                                                  }
+                                                                                                ]
+                                                                                              }
+                                                                                            ]
+                                                                                          }
+                                                                                        ]
+                                                                                      }
+                                                                                    ]
+                                                                                  }
+                                                                                ]
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Inline emphasis BELOW the cap (depth 20):"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "text",
+            "value": "under the inline cap"
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Inline emphasis ABOVE the cap (depth 40, both bail at 32):"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "value": "beyond the inline cap"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Long run of unterminated openers stays literal and total:"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[no closing brackets"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Long run of unterminated emphasis markers:"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": "**text"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Alternating brackets that never resolve to a link:"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "[a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a]([a](tail"
+      }
+    ]
+  }
+]

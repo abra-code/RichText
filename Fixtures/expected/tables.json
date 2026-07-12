@@ -1,0 +1,309 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A basic table:"
+      }
+    ]
+  },
+  {
+    "type": "table",
+    "headers": [
+      [
+        {
+          "type": "text",
+          "value": "Name"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Value"
+        }
+      ]
+    ],
+    "alignments": [
+      "none",
+      "none"
+    ],
+    "rows": [
+      [
+        [
+          {
+            "type": "text",
+            "value": "alpha"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "1"
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "type": "text",
+            "value": "beta"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "2"
+          }
+        ]
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Per-column alignment:"
+      }
+    ]
+  },
+  {
+    "type": "table",
+    "headers": [
+      [
+        {
+          "type": "text",
+          "value": "Left"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Center"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Right"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Default"
+        }
+      ]
+    ],
+    "alignments": [
+      "left",
+      "center",
+      "right",
+      "none"
+    ],
+    "rows": [
+      [
+        [
+          {
+            "type": "text",
+            "value": "a"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "b"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "c"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "d"
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "type": "text",
+            "value": "e"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "f"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "g"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "h"
+          }
+        ]
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Inline markup inside cells:"
+      }
+    ]
+  },
+  {
+    "type": "table",
+    "headers": [
+      [
+        {
+          "type": "text",
+          "value": "Feature"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Note"
+        }
+      ]
+    ],
+    "alignments": [
+      "none",
+      "none"
+    ],
+    "rows": [
+      [
+        [
+          {
+            "type": "strong",
+            "children": [
+              {
+                "type": "text",
+                "value": "bold"
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "a "
+          },
+          {
+            "type": "code",
+            "value": "code"
+          },
+          {
+            "type": "text",
+            "value": " cell"
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "type": "text",
+            "value": "a "
+          },
+          {
+            "type": "link",
+            "text": [
+              {
+                "type": "text",
+                "value": "link"
+              }
+            ],
+            "url": "https://swift.org"
+          }
+        ],
+        [
+          {
+            "type": "strikethrough",
+            "children": [
+              {
+                "type": "text",
+                "value": "struck"
+              }
+            ]
+          }
+        ]
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A ragged row shorter than the header:"
+      }
+    ]
+  },
+  {
+    "type": "table",
+    "headers": [
+      [
+        {
+          "type": "text",
+          "value": "One"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Two"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Three"
+        }
+      ]
+    ],
+    "alignments": [
+      "none",
+      "none",
+      "none"
+    ],
+    "rows": [
+      [
+        [
+          {
+            "type": "text",
+            "value": "only one"
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "type": "text",
+            "value": "two"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "cells"
+          }
+        ]
+      ]
+    ]
+  }
+]

@@ -1,0 +1,344 @@
+[
+  {
+    "type": "list",
+    "ordered": false,
+    "start": 1,
+    "tight": false,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "alpha"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "beta"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "gamma"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "star bullet"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "another star"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "plus bullet"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "another plus"
+            }
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": true,
+    "start": 1,
+    "tight": true,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "first"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "second"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "third"
+            }
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Ordered list starting at a number:"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": true,
+    "start": 5,
+    "tight": true,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "five"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "six"
+            }
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A nested list:"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": false,
+    "start": 1,
+    "tight": true,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "outer one"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "start": 1,
+          "tight": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "inlines": [
+                  {
+                    "type": "text",
+                    "value": "inner a"
+                  }
+                ]
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "inlines": [
+                  {
+                    "type": "text",
+                    "value": "inner b"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "outer two"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "start": 1,
+          "tight": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "inlines": [
+                  {
+                    "type": "text",
+                    "value": "numbered inner"
+                  }
+                ]
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "inlines": [
+                  {
+                    "type": "text",
+                    "value": "numbered inner two"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A loose list has blank lines between items:"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": false,
+    "start": 1,
+    "tight": false,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "loose one"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "loose two"
+            }
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A tight list is contiguous:"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": false,
+    "start": 1,
+    "tight": true,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "tight one"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "tight two"
+            }
+          ]
+        }
+      ]
+    ]
+  }
+]

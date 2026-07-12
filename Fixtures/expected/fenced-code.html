@@ -1,0 +1,14 @@
+<p>A backtick fence with a language:</p>
+<pre style="background:#f0f0f0;border-radius:6px;padding:8px 10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:0.94em;white-space:pre"><code class="language-swift">let x = 42  // a comment
+let s = "hello"</code></pre>
+<p>A tilde fence with no language:</p>
+<pre style="background:#f0f0f0;border-radius:6px;padding:8px 10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:0.94em;white-space:pre"><code>plain text
+no highlighting</code></pre>
+<p>A fence whose body contains a shorter run stays open:</p>
+<pre style="background:#f0f0f0;border-radius:6px;padding:8px 10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:0.94em;white-space:pre"><code>inside ``` still code</code></pre>
+<p>Markup inside a fence is not parsed:</p>
+<pre style="background:#f0f0f0;border-radius:6px;padding:8px 10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:0.94em;white-space:pre"><code>**not bold** and [not a link](http://x.test)</code></pre>
+<p>An unterminated fence swallows the rest:</p>
+<pre style="background:#f0f0f0;border-radius:6px;padding:8px 10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:0.94em;white-space:pre"><code class="language-python">def f():
+    return 1
+</code></pre>

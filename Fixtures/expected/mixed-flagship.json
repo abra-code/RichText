@@ -1,0 +1,361 @@
+[
+  {
+    "type": "heading",
+    "level": 1,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "RichText Feature Tour"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A flagship document that exercises "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "text",
+            "value": "strong"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": ", "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "emphasis"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": ", "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "emphasis",
+            "children": [
+              {
+                "type": "text",
+                "value": "both"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": ", "
+      },
+      {
+        "type": "strikethrough",
+        "children": [
+          {
+            "type": "text",
+            "value": "strikethrough"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": ", "
+      },
+      {
+        "type": "code",
+        "value": "inline code"
+      },
+      {
+        "type": "text",
+        "value": ", a "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "link"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": ", and an autolinked "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://example.test"
+          }
+        ],
+        "url": "https://example.test"
+      },
+      {
+        "type": "text",
+        "value": " all together."
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Code"
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": "swift",
+    "code": "func greet(_ name: String) -> String {\n    return \"Hello, \\(name)!\"  // interpolation\n}"
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A quote with structure"
+      }
+    ]
+  },
+  {
+    "type": "blockQuote",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "inlines": [
+          {
+            "type": "text",
+            "value": "Design goal: render a whole document as one selectable unit."
+          }
+        ]
+      },
+      {
+        "type": "blockQuote",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "inlines": [
+              {
+                "type": "text",
+                "value": "Even nested quotes keep their bar."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Lists"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": true,
+    "start": 1,
+    "tight": true,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "Parse the markdown"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "Build the model"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "start": 1,
+          "tight": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "inlines": [
+                  {
+                    "type": "text",
+                    "value": "totality is sacred"
+                  }
+                ]
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "inlines": [
+                  {
+                    "type": "text",
+                    "value": "bounds are preserved"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "Render per block"
+            }
+          ]
+        }
+      ]
+    ]
+  },
+  {
+    "type": "heading",
+    "level": 2,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A table"
+      }
+    ]
+  },
+  {
+    "type": "table",
+    "headers": [
+      [
+        {
+          "type": "text",
+          "value": "Block"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Renders as"
+        }
+      ]
+    ],
+    "alignments": [
+      "left",
+      "center"
+    ],
+    "rows": [
+      [
+        [
+          {
+            "type": "text",
+            "value": "heading"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "sized text"
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "type": "text",
+            "value": "code"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "a card"
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "type": "text",
+            "value": "table"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "a grid"
+          }
+        ]
+      ]
+    ]
+  },
+  {
+    "type": "thematicBreak"
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An image below:"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "image",
+        "alt": "architecture",
+        "url": "https://example.test/arch.png"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A closing paragraph with a hard break here"
+      },
+      {
+        "type": "lineBreak"
+      },
+      {
+        "type": "text",
+        "value": "and a final line."
+      }
+    ]
+  }
+]

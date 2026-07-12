@@ -1,0 +1,171 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A bare URL "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://swift.org"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": " gets linked."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An http URL "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "http://example.test/path?q=1"
+          }
+        ],
+        "url": "http://example.test/path?q=1"
+      },
+      {
+        "type": "text",
+        "value": " gets linked."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A www prefix "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "www.example.test"
+          }
+        ],
+        "url": "http://www.example.test"
+      },
+      {
+        "type": "text",
+        "value": " becomes an http link."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Trailing sentence punctuation is trimmed: see "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://swift.org"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": ", and "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://example.test/page"
+          }
+        ],
+        "url": "https://example.test/page"
+      },
+      {
+        "type": "text",
+        "value": "."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A URL in parentheses ("
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://swift.org"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": ") keeps balanced brackets."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A URL inside "
+      },
+      {
+        "type": "code",
+        "value": "code https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": " is not autolinked."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A URL inside an existing "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://swift.org"
+          }
+        ],
+        "url": "https://example.test"
+      },
+      {
+        "type": "text",
+        "value": " link is not re-linked."
+      }
+    ]
+  }
+]

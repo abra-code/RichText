@@ -1,0 +1,139 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A "
+      },
+      {
+        "type": "code",
+        "value": "code span"
+      },
+      {
+        "type": "text",
+        "value": " in a sentence."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Code with "
+      },
+      {
+        "type": "code",
+        "value": "double backtick ``inside`` "
+      },
+      {
+        "type": "text",
+        "value": " delimiters."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Code preserves "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "asterisks"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "text",
+            "value": "markup"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " literally: "
+      },
+      {
+        "type": "code",
+        "value": "not **bold**"
+      },
+      {
+        "type": "text",
+        "value": "."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Code preserves "
+      },
+      {
+        "type": "code",
+        "value": "<html>"
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "code",
+        "value": "&amp;"
+      },
+      {
+        "type": "text",
+        "value": " characters."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Unterminated `code span renders literally."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Empty `` backticks."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Adjacent "
+      },
+      {
+        "type": "code",
+        "value": "one``two"
+      },
+      {
+        "type": "text",
+        "value": " spans."
+      }
+    ]
+  }
+]

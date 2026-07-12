@@ -1,0 +1,79 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A single paragraph on one line."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A paragraph that spans two source lines folded together into three."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A paragraph with a hard break via trailing backslash"
+      },
+      {
+        "type": "lineBreak"
+      },
+      {
+        "type": "text",
+        "value": "continues on the next visual line."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A paragraph with a hard break via two trailing spaces"
+      },
+      {
+        "type": "lineBreak"
+      },
+      {
+        "type": "text",
+        "value": "continues on the next visual line."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Trailing whitespace    on a line with no break is trimmed."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Multiple"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "blank lines separate paragraphs."
+      }
+    ]
+  }
+]

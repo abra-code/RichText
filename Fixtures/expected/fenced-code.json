@@ -1,0 +1,72 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A backtick fence with a language:"
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": "swift",
+    "code": "let x = 42  // a comment\nlet s = \"hello\""
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A tilde fence with no language:"
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": null,
+    "code": "plain text\nno highlighting"
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A fence whose body contains a shorter run stays open:"
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": null,
+    "code": "inside ``` still code"
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Markup inside a fence is not parsed:"
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": null,
+    "code": "**not bold** and [not a link](http://x.test)"
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An unterminated fence swallows the rest:"
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": "python",
+    "code": "def f():\n    return 1\n"
+  }
+]

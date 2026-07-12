@@ -1,0 +1,86 @@
+[
+  {
+    "type": "heading",
+    "level": 1,
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Café visit résumé"
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A paragraph with accented text: naïve façade, jalapeño, Zürich."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Non-Latin scripts: こんにちは and Cyrillic привет."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An emoji sentence 🚀 with a rocket and a sparkle ✨, then more text."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A "
+      },
+      {
+        "type": "code",
+        "value": "code span with accents café naïve"
+      },
+      {
+        "type": "text",
+        "value": " preserved literally."
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": false,
+    "start": 1,
+    "tight": true,
+    "items": [
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "List item with an accent: é"
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "value": "Another with an emoji 🚀"
+            }
+          ]
+        }
+      ]
+    ]
+  }
+]

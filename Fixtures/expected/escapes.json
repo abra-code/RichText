@@ -1,0 +1,63 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Escaped *asterisks* are literal, not emphasis."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Escaped _underscores_ and `backticks` are literal."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Escaped brackets [not a link](nowhere) stay literal."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Escaped hash # and pipe | and tilde ~ characters."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A backslash before a normal char \\a is kept literal."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A trailing backslash at end of paragraph"
+      },
+      {
+        "type": "lineBreak"
+      },
+      {
+        "type": "text",
+        "value": "is a hard break, not an escape."
+      }
+    ]
+  }
+]
