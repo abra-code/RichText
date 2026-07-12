@@ -53,12 +53,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class DemoDocument(val name: String, val markdown: String)
-
 @Composable
 private fun DemoApp() {
     val context = LocalContext.current
-    val documents = remember { loadFixtureDocuments(context) }
+    // Lead with the curated showcase docs (real images + links), then the fixture corpus for parsing breadth.
+    val documents = remember { SHOWCASE_DOCUMENTS + loadFixtureDocuments(context) }
 
     var dark by remember { mutableStateOf(false) }
     var streaming by remember { mutableStateOf(false) }
