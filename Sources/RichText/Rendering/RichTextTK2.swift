@@ -49,12 +49,17 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextView {
         let (textView, owner) = RichTextAppKit.makeTextKit2View(attributed: attributed, metrics: metrics)
         context.coordinator.owner = owner
+        (textView as? RichTextHostSnapping)?.snapsToHostBounds = true   // SwiftUI adaptor fills its host
+        RichTextDiagnostics.register(textView)
+        (textView as? RichTextDiagnosableTextView)?.diag.note(textView, "make", "len=\(attributed.length)")
         startImageLoading(textView)
         return textView
     }
 
     func updateNSView(_ textView: NSTextView, context: Context) {
         if RichTextAppKit.currentContent(of: textView)?.isEqual(to: attributed) == false {
+            (textView as? RichTextDiagnosableTextView)?.diag
+                .note(textView, "contentChange", "len=\(RichTextAppKit.currentContent(of: textView)?.length ?? -1) -> \(attributed.length)")
             RichTextAppKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
             startImageLoading(textView)
@@ -106,7 +111,9 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         if liveWidth > 0, liveWidth != width {
             nsView.textContainer?.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
         }
-        return CGSize(width: width, height: height)
+        let size = CGSize(width: width, height: height)
+        (nsView as? RichTextDiagnosableTextView)?.diag.noteFit(nsView, proposalWidth: proposal.width, result: size)
+        return size
     }
 }
 
@@ -117,10 +124,41 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
 // a real-time drag stream and click-drag selection silently fails - even though the caret cursor still
 // shows on hover. Clearing the delay on each recognizer as it is attached restores selection. (TextKit 1
 // is unaffected: its mouseDown enters a modal event-tracking loop that pulls events directly.)
-final class SelectableTextView: NSTextView {
+final class SelectableTextView: NSTextView, RichTextDiagnosableTextView, RichTextHostSnapping {
+    let diag = RichTextViewDiagnostics()
+    var snapsToHostBounds = false   // set true only under SwiftUI hosting (the factory also serves AppKit hosts)
+
     override func addGestureRecognizer(_ gestureRecognizer: NSGestureRecognizer) {
         gestureRecognizer.delaysPrimaryMouseButtonEvents = false
         super.addGestureRecognizer(gestureRecognizer)
+    }
+
+    // Geometry diagnostics (see RichTextDiagnostics.swift): record who mutates the view's geometry,
+    // and cross-check the whole chain just before each draw.
+    override func setFrameSize(_ newSize: NSSize) {
+        diag.noteFrameSize(self, from: frame.size, to: newSize)
+        super.setFrameSize(newSize)
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        diag.noteFrameOrigin(self, from: frame.origin, to: newOrigin)
+        super.setFrameOrigin(newOrigin)
+    }
+
+    override func setBoundsOrigin(_ newOrigin: NSPoint) {
+        diag.noteBoundsOrigin(self, from: bounds.origin, to: newOrigin)
+        super.setBoundsOrigin(newOrigin)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        diag.note(self, "windowChange", window == nil ? "nil" : "attached")
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        snapToHostBoundsIfNeeded()
+        diag.checkAndReport(self)
     }
 
     // Keep glyphs pinned to the top of the view - the TextKit 2 twin of RichTextTopAlignedTextView. If the

@@ -172,7 +172,12 @@ private func richTextFittingSize(storage: NSTextStorage?, container: NSTextConta
         return naturalSize
     }
     container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-    layoutManager.ensureLayout(for: container)
+    // Force a COMPLETE layout of the whole document before reading usedRect - by character range, not
+    // ensureLayout(for:), which can return early against stale fragment state while a container-resize
+    // invalidation is still propagating (observed live: the same width measuring 48pt on one probe and
+    // 276pt on the next during a window resize; SwiftUI then paired the garbage height with the final
+    // width and the bubble rendered shifted). Measurement must be deterministic for a given (text, width).
+    layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: storage?.length ?? 0))
     let height = ceil(layoutManager.usedRect(for: container).height)
     // Measuring mutates the LIVE container, and SwiftUI probes several widths (including 0) in one pass.
     // widthTracksTextView only re-tracks the container on an actual frame CHANGE, so if the final probe is
@@ -193,7 +198,10 @@ private func richTextFittingSize(storage: NSTextStorage?, container: NSTextConta
 // after which it sticks until the row is re-created. NSTextView's default textContainerOrigin does not undo
 // that offset, so the text renders low inside the bubble. Subtracting the offset draws the text from the top;
 // when there is no offset (the normal case, minY == 0) this is a no-op.
-final class RichTextTopAlignedTextView: NSTextView {
+final class RichTextTopAlignedTextView: NSTextView, RichTextDiagnosableTextView, RichTextHostSnapping {
+    let diag = RichTextViewDiagnostics()
+    var snapsToHostBounds = false
+
     private var isMeasuringOrigin = false
     override var textContainerOrigin: NSPoint {
         let base = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
@@ -204,6 +212,34 @@ final class RichTextTopAlignedTextView: NSTextView {
         isMeasuringOrigin = true
         defer { isMeasuringOrigin = false }
         return NSPoint(x: base.x, y: base.y - layoutManager.usedRect(for: textContainer).minY)
+    }
+
+    // Geometry diagnostics (see RichTextDiagnostics.swift): record who mutates the view's geometry,
+    // and cross-check the whole chain just before each draw.
+    override func setFrameSize(_ newSize: NSSize) {
+        diag.noteFrameSize(self, from: frame.size, to: newSize)
+        super.setFrameSize(newSize)
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        diag.noteFrameOrigin(self, from: frame.origin, to: newOrigin)
+        super.setFrameOrigin(newOrigin)
+    }
+
+    override func setBoundsOrigin(_ newOrigin: NSPoint) {
+        diag.noteBoundsOrigin(self, from: bounds.origin, to: newOrigin)
+        super.setBoundsOrigin(newOrigin)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        diag.note(self, "windowChange", window == nil ? "nil" : "attached")
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        snapToHostBoundsIfNeeded()
+        diag.checkAndReport(self)
     }
 }
 
@@ -231,6 +267,9 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
             .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand,
         ]
+        textView.snapsToHostBounds = true   // SwiftUI's adaptor sizes the platform view to fill its host
+        RichTextDiagnostics.register(textView)
+        textView.diag.note(textView, "make", "len=\(attributed.length)")
         startImageLoading(textView, stack)
         return textView
     }
@@ -238,6 +277,8 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
     func updateNSView(_ textView: NSTextView, context: Context) {
         let stack = context.coordinator
         if !stack.storage.isEqual(to: attributed) {
+            (textView as? RichTextDiagnosableTextView)?.diag
+                .note(textView, "contentChange", "len=\(stack.storage.length) -> \(attributed.length)")
             stack.storage.setAttributedString(attributed)
             textView.invalidateIntrinsicContentSize()
             startImageLoading(textView, stack)
@@ -263,9 +304,11 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
         guard let container = nsView.textContainer, let layoutManager = nsView.layoutManager else {
             return nil
         }
-        return richTextFittingSize(storage: context.coordinator.storage, container: container,
-                                   layoutManager: layoutManager, proposalWidth: proposal.width,
-                                   liveWidth: nsView.bounds.width, behavior: widthBehavior)
+        let size = richTextFittingSize(storage: context.coordinator.storage, container: container,
+                                       layoutManager: layoutManager, proposalWidth: proposal.width,
+                                       liveWidth: nsView.bounds.width, behavior: widthBehavior)
+        (nsView as? RichTextDiagnosableTextView)?.diag.noteFit(nsView, proposalWidth: proposal.width, result: size)
+        return size
     }
 }
 
