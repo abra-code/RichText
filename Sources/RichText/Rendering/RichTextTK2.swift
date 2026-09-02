@@ -19,6 +19,52 @@ import UIKit
 // (RichTextAppKit / RichTextUIKit), which returns that provider as `owner` for the coordinator to hold.
 final class TextKit2Coordinator {
     var owner: AnyObject?
+    var appliedHighlights: RichTextHighlights?
+    // setContent's setAttributedString on the content storage drops the rendering attributes with the
+    // old text, so the applied value is stale after a content change even when it compares equal.
+    var needsHighlightReapply = false
+    let matchFrames = RichTextMatchFrameReporter()
+    var contentGeneration = 0
+}
+
+// Applies the find highlights as rendering attributes (RichTextHighlightTK2) when they changed, and
+// schedules the current match's frame report (see RichTextMatchFrameReporter). Shared by the AppKit /
+// UIKit representables; `containerOrigin` is evaluated at measurement time, not now.
+@MainActor
+private func applyHighlightsTK2(_ highlights: RichTextHighlights?, layoutManager: NSTextLayoutManager?,
+                                coordinator: TextKit2Coordinator, containerOrigin: @escaping () -> CGPoint,
+                                storageLength: @escaping () -> Int, containerWidth: @escaping () -> CGFloat,
+                                report: @escaping @MainActor (CGRect?) -> Void) {
+    guard let layoutManager else {
+        return
+    }
+    if coordinator.needsHighlightReapply || coordinator.appliedHighlights != highlights {
+        coordinator.needsHighlightReapply = false
+        coordinator.appliedHighlights = highlights
+        RichTextHighlightTK2.apply(highlights, to: layoutManager)
+    }
+    scheduleMatchFrameTK2(highlights?.currentRange, layoutManager: layoutManager, coordinator: coordinator,
+                          containerOrigin: containerOrigin, storageLength: storageLength,
+                          containerWidth: containerWidth, report: report)
+}
+
+@MainActor
+private func scheduleMatchFrameTK2(_ range: NSRange?, layoutManager: NSTextLayoutManager,
+                                   coordinator: TextKit2Coordinator, containerOrigin: @escaping () -> CGPoint,
+                                   storageLength: @escaping () -> Int, containerWidth: @escaping () -> CGFloat,
+                                   report: @escaping @MainActor (CGRect?) -> Void) {
+    coordinator.matchFrames.schedule({ [weak layoutManager, weak coordinator] in
+        guard let layoutManager, let coordinator else {
+            return (nil, 0, 0, 0, { nil })
+        }
+        return (range, containerWidth(), storageLength(), coordinator.contentGeneration, {
+            guard let range, let rect = RichTextHighlightTK2.frame(of: range, in: layoutManager) else {
+                return nil
+            }
+            let origin = containerOrigin()
+            return rect.offsetBy(dx: origin.x, dy: origin.y)
+        })
+    }, report: report)
 }
 
 // Full content height under TextKit 2: force layout and take the bottom of the lowest fragment.
@@ -38,6 +84,8 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
     let attributed: NSAttributedString
     let metrics: RichTextDecorationMetrics
     let widthBehavior: RichTextWidthBehavior
+    let highlights: RichTextHighlights?
+    let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKit2Coordinator {
         TextKit2Coordinator()
@@ -63,7 +111,14 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
             RichTextAppKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
             startImageLoading(textView)
+            context.coordinator.needsHighlightReapply = true
+            context.coordinator.contentGeneration += 1
         }
+        applyHighlightsTK2(highlights, layoutManager: textView.textLayoutManager, coordinator: context.coordinator,
+                           containerOrigin: { [weak textView] in textView?.textContainerOrigin ?? .zero },
+                           storageLength: { [weak textView] in textView?.textStorage?.length ?? 0 },
+                           containerWidth: { [weak textView] in textView?.textContainer?.size.width ?? 0 },
+                           report: onCurrentMatchFrame)
     }
 
     // Fetch image attachments; when each arrives, re-apply cached images to the live content and re-lay-out.
@@ -113,6 +168,13 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         }
         let size = CGSize(width: width, height: height)
         (nsView as? RichTextDiagnosableTextView)?.diag.noteFit(nsView, proposalWidth: proposal.width, result: size)
+        if let range = highlights?.currentRange, let layoutManager = nsView.textLayoutManager {
+            scheduleMatchFrameTK2(range, layoutManager: layoutManager, coordinator: context.coordinator,
+                                  containerOrigin: { [weak nsView] in nsView?.textContainerOrigin ?? .zero },
+                                  storageLength: { [weak nsView] in nsView?.textStorage?.length ?? 0 },
+                                  containerWidth: { [weak nsView] in nsView?.textContainer?.size.width ?? 0 },
+                                  report: onCurrentMatchFrame)
+        }
         return size
     }
 }
@@ -199,6 +261,8 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     let attributed: NSAttributedString
     let metrics: RichTextDecorationMetrics
     let widthBehavior: RichTextWidthBehavior
+    let highlights: RichTextHighlights?
+    let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKit2Coordinator {
         TextKit2Coordinator()
@@ -218,7 +282,17 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
             RichTextUIKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
             startImageLoading(textView)
+            context.coordinator.needsHighlightReapply = true
+            context.coordinator.contentGeneration += 1
         }
+        applyHighlightsTK2(highlights, layoutManager: textView.textLayoutManager, coordinator: context.coordinator,
+                           containerOrigin: { [weak textView] in
+                               let inset = textView?.textContainerInset ?? .zero
+                               return CGPoint(x: inset.left, y: inset.top)
+                           },
+                           storageLength: { [weak textView] in textView?.textStorage.length ?? 0 },
+                           containerWidth: { [weak textView] in textView?.textContainer.size.width ?? 0 },
+                           report: onCurrentMatchFrame)
     }
 
     private func startImageLoading(_ textView: UITextView) {
@@ -252,6 +326,16 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
         let liveWidth = uiView.bounds.width
         if liveWidth > 0, liveWidth != width {
             uiView.textContainer.size = CGSize(width: liveWidth, height: CGFloat.greatestFiniteMagnitude)
+        }
+        if let range = highlights?.currentRange, let layoutManager = uiView.textLayoutManager {
+            scheduleMatchFrameTK2(range, layoutManager: layoutManager, coordinator: context.coordinator,
+                                  containerOrigin: { [weak uiView] in
+                                      let inset = uiView?.textContainerInset ?? .zero
+                                      return CGPoint(x: inset.left, y: inset.top)
+                                  },
+                                  storageLength: { [weak uiView] in uiView?.textStorage.length ?? 0 },
+                                  containerWidth: { [weak uiView] in uiView?.textContainer.size.width ?? 0 },
+                                  report: onCurrentMatchFrame)
         }
         return CGSize(width: width, height: height)
     }

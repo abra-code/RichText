@@ -28,6 +28,16 @@ RichTextPasteboard.write(doc)
 `RichText` is read-only-but-selectable and self-sizes to its content for the proposed width, so it
 drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` for a runnable app.
 
+## Find and highlight
+
+Three layers, each usable without the one above it:
+
+1. **Engine** (`RichTextSearch`, `RichTextPlainText`): pure functions. `RichTextSearch.matches(in:query:options:)` finds every hit in a string, an attributed string, or a document (rendered with the theme the view uses, so the ranges are the view's ranges), returning UTF-16 ranges in the rendered text plus a one-line snippet. Options: case, diacritics, whole word. `RichTextPlainText.text(for:)` is the document as the text a reader sees (alt text for images, table rows as comma-separated cells), for indexers that search many documents without rendering any.
+2. **Highlights** (`RichText.findHighlights(_:)`): paints ranges behind the text and a distinct color on the current one. Draw-only on both engines (TextKit 1 paints in the layout manager's `drawBackground`, TextKit 2 uses rendering attributes), so a query change never re-lays-out the document. The current match's frame is published through `RichTextCurrentMatchAnchorKey` so an embedding scroller can bring it into view.
+3. **Find bar** (`RichTextFindController`, `RichTextFindBar`): the standalone UI over one document. `RichText(doc).find(controller)` binds and paints; `.richTextFindBar(controller)` on the container shows the bar and installs Cmd-F, Cmd-G, Shift-Cmd-G and Escape.
+
+A chat transcript takes layers 1 and 2 only: it runs the engine over every message, keeps one cross-message cursor of its own, and hands each message just its ranges.
+
 ## How it works
 
 - **One model, one attributed string, one text view.** `RichTextDocument` (blocks + inline runs) is

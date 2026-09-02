@@ -40,6 +40,10 @@ public struct RichText: View {
     private let engine: RichTextEngine
     private let metrics: RichTextDecorationMetrics
     private var widthBehavior: RichTextWidthBehavior = .fill
+    private var highlights: RichTextHighlights?
+    // The current match's frame in this view's coordinates, reported by the representable after layout and
+    // republished as an anchor preference (RichTextCurrentMatchAnchorKey) for an embedding scroller.
+    @State private var currentMatchFrame: CGRect?
     // The VoiceOver reading of the whole document, built from the model (see RichTextAccessibility): images
     // speak their alt text, tables read row by row - neither of which is recoverable from the glyph stream of
     // the single rendered text view.
@@ -74,8 +78,26 @@ public struct RichText: View {
         return copy
     }
 
+    /// The text as rendered - the string `RichTextSearch` ranges and `findHighlights` refer to.
+    public var renderedText: String {
+        attributed.string
+    }
+
+    /// Returns a copy that paints `highlights` (ranges in the rendered string, as `RichTextSearch` reports
+    /// them) behind the text, and publishes the current match's frame through
+    /// `RichTextCurrentMatchAnchorKey`. Draw-only: the text is not re-laid-out. nil clears.
+    public func findHighlights(_ highlights: RichTextHighlights?) -> RichText {
+        var copy = self
+        copy.highlights = highlights?.isEmpty == true ? nil : highlights
+        return copy
+    }
+
     public var body: some View {
         content
+            .anchorPreference(key: RichTextCurrentMatchAnchorKey.self,
+                              value: .rect(currentMatchFrame ?? .zero)) { anchor in
+                currentMatchFrame == nil ? nil : anchor
+            }
             // `.fill` expands to the proposed width (the original, default behavior); `.hug` leaves the view
             // at its content size (the representable's sizeThatFits already hugs). alignment matters only
             // when filling.
@@ -90,9 +112,17 @@ public struct RichText: View {
     private var content: some View {
         switch engine {
         case .textKit1:
-            RichTextRepresentableTK1(attributed: attributed, widthBehavior: widthBehavior)
+            RichTextRepresentableTK1(attributed: attributed, widthBehavior: widthBehavior, highlights: highlights,
+                                     onCurrentMatchFrame: reportCurrentMatchFrame)
         case .textKit2:
-            RichTextRepresentableTK2(attributed: attributed, metrics: metrics, widthBehavior: widthBehavior)
+            RichTextRepresentableTK2(attributed: attributed, metrics: metrics, widthBehavior: widthBehavior,
+                                     highlights: highlights, onCurrentMatchFrame: reportCurrentMatchFrame)
+        }
+    }
+
+    private func reportCurrentMatchFrame(_ frame: CGRect?) {
+        if currentMatchFrame != frame {
+            currentMatchFrame = frame
         }
     }
 }
@@ -108,6 +138,10 @@ private final class TextKitStack {
     let storage: NSTextStorage
     let layoutManager: RichTextLayoutManager
     let container: NSTextContainer
+    // Reports the current match's frame after layout (see RichTextMatchFrameReporter).
+    let matchFrames = RichTextMatchFrameReporter()
+    // Bumped on every content replacement, so the reporter sees a same-length replacement.
+    var contentGeneration = 0
 
     init() {
         storage = NSTextStorage()
@@ -246,6 +280,8 @@ final class RichTextTopAlignedTextView: NSTextView, RichTextDiagnosableTextView,
 private struct RichTextRepresentableTK1:NSViewRepresentable {
     let attributed: NSAttributedString
     let widthBehavior: RichTextWidthBehavior
+    let highlights: RichTextHighlights?
+    let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKitStack {
         TextKitStack()
@@ -280,9 +316,30 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
             (textView as? RichTextDiagnosableTextView)?.diag
                 .note(textView, "contentChange", "len=\(stack.storage.length) -> \(attributed.length)")
             stack.storage.setAttributedString(attributed)
+            stack.contentGeneration += 1
             textView.invalidateIntrinsicContentSize()
             startImageLoading(textView, stack)
         }
+        stack.layoutManager.highlights = highlights
+        scheduleMatchFrame(textView, stack)
+    }
+
+    // Measured on the next runloop turn, never here: see RichTextMatchFrameReporter. Also called from
+    // sizeThatFits so a resize re-measures.
+    private func scheduleMatchFrame(_ textView: NSTextView, _ stack: TextKitStack) {
+        let range = highlights?.currentRange
+        stack.matchFrames.schedule({ [weak textView, weak stack] in
+            guard let textView, let stack else {
+                return (nil, 0, 0, 0, { nil })
+            }
+            return (range, stack.container.size.width, stack.storage.length, stack.contentGeneration, {
+                guard let range, let rect = stack.layoutManager.frame(of: range, in: stack.container) else {
+                    return nil
+                }
+                let origin = textView.textContainerOrigin
+                return rect.offsetBy(dx: origin.x, dy: origin.y)
+            })
+        }, report: onCurrentMatchFrame)
     }
 
     // Fetch image attachments; when each arrives, re-apply cached images to the LIVE storage and re-lay-out
@@ -308,6 +365,9 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
                                        layoutManager: layoutManager, proposalWidth: proposal.width,
                                        liveWidth: nsView.bounds.width, behavior: widthBehavior)
         (nsView as? RichTextDiagnosableTextView)?.diag.noteFit(nsView, proposalWidth: proposal.width, result: size)
+        if highlights?.currentRange != nil {
+            scheduleMatchFrame(nsView, context.coordinator)
+        }
         return size
     }
 }
@@ -317,6 +377,8 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
 private struct RichTextRepresentableTK1:UIViewRepresentable {
     let attributed: NSAttributedString
     let widthBehavior: RichTextWidthBehavior
+    let highlights: RichTextHighlights?
+    let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKitStack {
         TextKitStack()
@@ -341,9 +403,29 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
         let stack = context.coordinator
         if !stack.storage.isEqual(to: attributed) {
             stack.storage.setAttributedString(attributed)
+            stack.contentGeneration += 1
             textView.invalidateIntrinsicContentSize()
             startImageLoading(textView, stack)
         }
+        stack.layoutManager.highlights = highlights
+        scheduleMatchFrame(textView, stack)
+    }
+
+    // See the AppKit twin.
+    private func scheduleMatchFrame(_ textView: UITextView, _ stack: TextKitStack) {
+        let range = highlights?.currentRange
+        stack.matchFrames.schedule({ [weak textView, weak stack] in
+            guard let textView, let stack else {
+                return (nil, 0, 0, 0, { nil })
+            }
+            return (range, stack.container.size.width, stack.storage.length, stack.contentGeneration, {
+                guard let range, let rect = stack.layoutManager.frame(of: range, in: stack.container) else {
+                    return nil
+                }
+                let inset = textView.textContainerInset
+                return rect.offsetBy(dx: inset.left, dy: inset.top)
+            })
+        }, report: onCurrentMatchFrame)
     }
 
     // See the AppKit twin: reload against the LIVE storage so it survives view/attributed rebuilds.
@@ -361,9 +443,13 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let stack = context.coordinator
-        return richTextFittingSize(storage: stack.storage, container: stack.container,
-                                   layoutManager: stack.layoutManager, proposalWidth: proposal.width,
-                                   liveWidth: uiView.bounds.width, behavior: widthBehavior)
+        let size = richTextFittingSize(storage: stack.storage, container: stack.container,
+                                       layoutManager: stack.layoutManager, proposalWidth: proposal.width,
+                                       liveWidth: uiView.bounds.width, behavior: widthBehavior)
+        if highlights?.currentRange != nil {
+            scheduleMatchFrame(uiView, stack)
+        }
+        return size
     }
 }
 

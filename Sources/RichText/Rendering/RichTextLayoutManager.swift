@@ -18,6 +18,24 @@ import UIKit
 
 final class RichTextLayoutManager: NSLayoutManager {
 
+    /// Find highlights (RichTextHighlight.swift), painted in drawBackground like the other decorations:
+    /// draw-only, so setting them never invalidates layout - only display, for the old and new ranges.
+    var highlights: RichTextHighlights? {
+        didSet {
+            guard highlights != oldValue, let storage = textStorage else {
+                return
+            }
+            // One character wider on each side than the range: the fill is inset by -1pt, so the exact
+            // glyph rect would leave a sliver of the old color behind.
+            let length = storage.length
+            for entry in (oldValue?.clipped(to: length) ?? []) + (highlights?.clipped(to: length) ?? []) {
+                let start = max(0, entry.range.location - 1)
+                let end = min(length, NSMaxRange(entry.range) + 1)
+                invalidateDisplay(forCharacterRange: NSRange(location: start, length: end - start))
+            }
+        }
+    }
+
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)   // inline-code backgrounds
         guard let storage = textStorage, let container = textContainers.first else {
@@ -95,6 +113,24 @@ final class RichTextLayoutManager: NSLayoutManager {
                                          in: container) { rect, _ in
                 let pill = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2, dy: -1)
                 fillRoundedRect(pill, radius: 3, color: RTVColors.codeFill)
+            }
+        }
+
+        // Find highlights, last so they sit above the pills and table fills but under the glyphs. One
+        // rounded rect per line a match occupies, like the pills.
+        if let highlights {
+            for (range, isCurrent) in highlights.clipped(to: storage.length) {
+                guard let visible = NSIntersectionRange(range, charRange).nonEmpty else {
+                    continue
+                }
+                let glyphs = glyphRange(forCharacterRange: visible, actualCharacterRange: nil)
+                let color = isCurrent ? highlights.style.currentColor : highlights.style.color
+                enumerateEnclosingRects(forGlyphRange: glyphs,
+                                        withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                                        in: container) { rect, _ in
+                    fillRoundedRect(rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -1, dy: 0),
+                                    radius: 2, color: color)
+                }
             }
         }
     }
