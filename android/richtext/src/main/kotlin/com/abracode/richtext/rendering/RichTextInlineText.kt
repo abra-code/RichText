@@ -42,7 +42,11 @@ class RichTextInlineResult(
     val text: AnnotatedString,
     val images: List<RichTextInlineImageRef>,
     val codeSpans: List<RichTextCodeSpan>,
-)
+) {
+    /** The same result with find [highlights] painted into the text (see RichTextHighlight.kt). */
+    fun withHighlights(highlights: RichTextLocalHighlights?): RichTextInlineResult =
+        if (highlights == null) this else RichTextInlineResult(text.withHighlights(highlights), images, codeSpans)
+}
 
 // The inherited inline context, mirroring the Swift renderInlines parameters. `color` is the inherited text
 // color (body at top level, secondary inside quotes); `link` is the allow-listed URL or null.

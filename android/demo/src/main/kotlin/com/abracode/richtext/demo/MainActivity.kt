@@ -27,7 +27,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.abracode.richtext.find.RichTextFindBar
+import com.abracode.richtext.find.RichTextFindController
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +71,9 @@ private fun DemoApp() {
     var dark by remember { mutableStateOf(false) }
     var streaming by remember { mutableStateOf(false) }
     var selected by remember { mutableIntStateOf(0) }
+    // The find bar over the shown document: the search icon presents it (Android's Cmd-F), `RichText(find = ...)`
+    // binds the document and paints the matches, and the current match's bounds scroll it into view below.
+    val find = remember { RichTextFindController() }
 
     val fullMarkdown = documents.getOrNull(selected)?.markdown ?: ""
 
@@ -92,6 +104,13 @@ private fun DemoApp() {
                     Spacer(Modifier.width(16.dp))
                     Text("Dark", style = MaterialTheme.typography.labelLarge)
                     Switch(checked = dark, onCheckedChange = { dark = it })
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { find.present() }) {
+                        Icon(Icons.Filled.Search, contentDescription = "Find in document")
+                    }
+                }
+                if (find.isPresented) {
+                    RichTextFindBar(find)
                 }
 
                 Row(
@@ -123,14 +142,28 @@ private fun DemoApp() {
 
                 HorizontalDivider()
 
+                val scroll = rememberScrollState()
+                var viewport by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                // Bring the current match into view: its bounds arrive in window coordinates, the viewport converts
+                // them to its own, and the scroll moves by the amount that puts the match a third of the way down.
+                LaunchedEffect(find.currentMatchBounds) {
+                    val bounds = find.currentMatchBounds ?: return@LaunchedEffect
+                    val port = viewport ?: return@LaunchedEffect
+                    val top = port.windowToLocal(bounds.topLeft).y
+                    val height = port.size.height.toFloat()
+                    if (top < 0f || top + bounds.height > height) {
+                        scroll.animateScrollBy(top - height / 3f)
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .onGloballyPositioned { viewport = it }
+                        .verticalScroll(scroll)
                         .padding(16.dp),
                 ) {
-                    RichText(markdown = shownMarkdown)
+                    RichText(markdown = shownMarkdown, find = find)
                 }
             }
         }

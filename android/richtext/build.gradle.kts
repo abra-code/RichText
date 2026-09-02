@@ -86,6 +86,9 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
+    // The find bar's icons (search, arrows, close, more): the AndroidX core icon set, an import Material 3 does not
+    // re-export (plan divergence #8).
+    implementation(libs.androidx.compose.material.icons.core)
 
     // JVM unit tests (pure logic: parser, model, serializers, highlighter, URL policy).
     testImplementation(libs.junit)

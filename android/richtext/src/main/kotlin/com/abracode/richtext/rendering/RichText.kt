@@ -19,8 +19,15 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.abracode.richtext.find.RichTextFindController
+import com.abracode.richtext.search.RichTextRange
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -58,23 +65,52 @@ import androidx.compose.ui.text.PlaceholderVerticalAlign
 // constants (card radius, quote-bar width, grid, insets) are reproduced per block. Metric defaults and the
 // semantic color roles match the Swift side (RichTextTheme / RTVColors).
 
-/** Renders a parsed [document] with the given [theme]. */
+/**
+ * Renders a parsed [document] with the given [theme].
+ *
+ * Find (the port of RichText.findHighlights / RichText.find): [highlights] paints ranges of the rendered text
+ * ([RichTextRenderedText]) behind the words, the current one in its own color, and [onCurrentMatchBounds] gets the
+ * current match's bounds in WINDOW coordinates once laid out (null when there is none) so a host scroller can
+ * bring it into view. [find] does both for a [RichTextFindController] and keeps it bound to this document's
+ * rendered text; explicit [highlights] win over the controller's.
+ */
 @Composable
 fun RichText(
     document: RichTextDocument,
     theme: RichTextTheme = RichTextTheme.Default,
     modifier: Modifier = Modifier,
+    highlights: RichTextHighlights? = null,
+    onCurrentMatchBounds: ((Rect?) -> Unit)? = null,
+    find: RichTextFindController? = null,
 ) {
     val colors = rememberRichTextColors()
     val bodySize = theme.baseFontSize?.sp ?: 16.sp
-    val scope = remember(theme, colors, bodySize) { RichTextScope(theme, colors, bodySize) }
+    // The rendered-text walk duplicates the block composables' inline builds, so it runs only for a document
+    // that is being searched; the segment arithmetic below needs just the (cheap) per-block counts.
+    val searching = find != null || highlights != null
+    val layout = remember(document, searching) { if (searching) RichTextRenderedText.layout(document) else RichTextRenderedText.Empty }
+    if (find != null) {
+        LaunchedEffect(find, layout.text) { find.bind(layout.text) }
+    }
+    val effective = highlights ?: find?.highlights?.takeIf { !it.isEmpty }
+    val controllerReport: ((Rect?) -> Unit)? = remember(find) { find?.let { controller -> { rect: Rect? -> controller.currentMatchBounds = rect } } }
+    val report: ((Rect?) -> Unit)? = onCurrentMatchBounds ?: controllerReport
+    // No current match: say so once, so a scroller does not keep a stale frame.
+    LaunchedEffect(effective?.currentRange, report) {
+        if (effective?.currentRange == null) report?.invoke(null)
+    }
+    val scope = remember(theme, colors, bodySize, layout, effective, report) {
+        RichTextScope(theme, colors, bodySize, layout, effective, report)
+    }
     SelectionContainer(modifier) {
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(theme.blockSpacing.dp),
         ) {
+            var segmentBase = 0
             for (block in document.blocks) {
-                BlockView(block, colors.body, scope)
+                BlockView(block, colors.body, scope, segmentBase)
+                segmentBase += RichTextRenderedText.segmentCount(block)
             }
         }
     }
@@ -89,17 +125,28 @@ fun RichText(
     markdown: String,
     theme: RichTextTheme = RichTextTheme.Default,
     modifier: Modifier = Modifier,
+    highlights: RichTextHighlights? = null,
+    onCurrentMatchBounds: ((Rect?) -> Unit)? = null,
+    find: RichTextFindController? = null,
 ) {
     val document = remember(markdown) { RichTextDocument.parse(markdown) }
-    RichText(document, theme, modifier)
+    RichText(document, theme, modifier, highlights, onCurrentMatchBounds, find)
 }
 
-// Immutable render context threaded through the block composables (Compose-resolved theme + colors + body size).
+// Immutable render context threaded through the block composables (Compose-resolved theme + colors + body size),
+// plus the find state: the rendered-text layout the segment indices refer to, the highlights to paint, and where
+// to report the current match's bounds.
 internal class RichTextScope(
     val theme: RichTextTheme,
     val colors: RichTextColors,
     val bodySize: TextUnit,
-)
+    val layout: RichTextRenderedText.Layout,
+    val highlights: RichTextHighlights?,
+    val onCurrentMatchBounds: ((Rect?) -> Unit)?,
+) {
+    /** The highlights of segment [index], local to it; null when nothing lights it. */
+    fun local(index: Int): RichTextLocalHighlights? = layout.localHighlights(index, highlights)
+}
 
 // Image caps mirroring Swift's RichTextImageLoading.defaultMaxWidth (320): a block image displays at most 320dp
 // wide and its variant is decoded/cached at most 320px wide (Swift uses 320 as both the point display cap and
@@ -122,56 +169,65 @@ internal object RichTextMetrics {
     }
 }
 
+// [segmentBase] is the index of this block's first segment in the rendered text (RichTextRenderedText); a block
+// with children hands each child its own base, in the same draw order the layout walk uses.
 @Composable
-internal fun BlockView(block: RichTextBlock, color: Color, scope: RichTextScope) {
+internal fun BlockView(block: RichTextBlock, color: Color, scope: RichTextScope, segmentBase: Int) {
     when (block) {
-        is RichTextBlock.Heading -> HeadingView(block, color, scope)
-        is RichTextBlock.Paragraph -> ParagraphView(block.inlines, color, scope)
-        is RichTextBlock.CodeBlock -> CodeBlockView(block, scope)
-        is RichTextBlock.BlockQuote -> BlockQuoteView(block, scope)
-        is RichTextBlock.ListBlock -> ListView(block, color, scope)
+        is RichTextBlock.Heading -> HeadingView(block, color, scope, segmentBase)
+        is RichTextBlock.Paragraph -> ParagraphView(block.inlines, color, scope, segmentBase)
+        is RichTextBlock.CodeBlock -> CodeBlockView(block, scope, segmentBase)
+        is RichTextBlock.BlockQuote -> BlockQuoteView(block, scope, segmentBase)
+        is RichTextBlock.ListBlock -> ListView(block, color, scope, segmentBase)
         RichTextBlock.ThematicBreak -> ThematicBreakView(scope)
-        is RichTextBlock.Table -> RichTextTableView(block, color, scope)
+        is RichTextBlock.Table -> RichTextTableView(block, color, scope, segmentBase)
     }
 }
 
 @Composable
-private fun HeadingView(block: RichTextBlock.Heading, color: Color, scope: RichTextScope) {
+private fun HeadingView(block: RichTextBlock.Heading, color: Color, scope: RichTextScope, segmentIndex: Int) {
     val size = scope.bodySize * RichTextMetrics.headingMultiplier(block.level)
-    // Memoize the AnnotatedString build so streaming re-renders (20 Hz) only rebuild when this block's content
-    // or the resolved colors actually change, not on every recomposition.
-    val result = remember(block.inlines, color, scope.colors) {
-        buildRichInlines(block.inlines, scope.colors, baseColor = color, initialBold = true)
+    val local = scope.local(segmentIndex)
+    // Memoize the AnnotatedString build so streaming re-renders (20 Hz) only rebuild when this block's content,
+    // the resolved colors or its find highlights actually change, not on every recomposition.
+    val result = remember(block.inlines, color, scope.colors, local) {
+        buildRichInlines(block.inlines, scope.colors, baseColor = color, initialBold = true).withHighlights(local)
     }
     RichInlineText(
         result = result,
         scope = scope,
         style = TextStyle(fontSize = size, fontWeight = FontWeight.Bold, color = color),
         modifier = Modifier.fillMaxWidth().semantics { heading() },
+        currentMatch = local?.currentRange,
     )
 }
 
 @Composable
-private fun ParagraphView(inlines: List<RichTextInline>, color: Color, scope: RichTextScope) {
+private fun ParagraphView(inlines: List<RichTextInline>, color: Color, scope: RichTextScope, segmentIndex: Int) {
     // A paragraph that is just an image renders as a block image; otherwise as text (with any inline images).
     val soleImage = inlines.soleBlockImage()
     if (soleImage != null) {
         BlockImageView(soleImage, scope)
         return
     }
-    val result = remember(inlines, color, scope.colors) { buildRichInlines(inlines, scope.colors, baseColor = color) }
+    val local = scope.local(segmentIndex)
+    val result = remember(inlines, color, scope.colors, local) {
+        buildRichInlines(inlines, scope.colors, baseColor = color).withHighlights(local)
+    }
     RichInlineText(
         result = result,
         scope = scope,
         style = TextStyle(fontSize = scope.bodySize, color = color),
         modifier = Modifier.fillMaxWidth(),
+        currentMatch = local?.currentRange,
     )
 }
 
 @Composable
-private fun CodeBlockView(block: RichTextBlock.CodeBlock, scope: RichTextScope) {
-    val annotated = remember(block.code, block.language, scope.theme.syntaxHighlighting, scope.colors) {
-        buildCodeAnnotated(block.code, block.language, scope.theme.syntaxHighlighting, scope.colors)
+private fun CodeBlockView(block: RichTextBlock.CodeBlock, scope: RichTextScope, segmentIndex: Int) {
+    val local = scope.local(segmentIndex)
+    val annotated = remember(block.code, block.language, scope.theme.syntaxHighlighting, scope.colors, local) {
+        buildCodeAnnotated(block.code, block.language, scope.theme.syntaxHighlighting, scope.colors).withHighlights(local)
     }
     Box(
         modifier = Modifier
@@ -180,6 +236,7 @@ private fun CodeBlockView(block: RichTextBlock.CodeBlock, scope: RichTextScope) 
     ) {
         // Long lines scroll inside the card instead of wrapping, matching Apple's non-wrapping code.
         Box(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp)) {
+            val bounds = rememberMatchBounds(local?.currentRange, scope.onCurrentMatchBounds)
             Text(
                 text = annotated,
                 style = TextStyle(
@@ -188,13 +245,15 @@ private fun CodeBlockView(block: RichTextBlock.CodeBlock, scope: RichTextScope) 
                     color = scope.colors.body,
                 ),
                 softWrap = false,
+                onTextLayout = bounds.onTextLayout,
+                modifier = bounds.modifier,
             )
         }
     }
 }
 
 @Composable
-private fun BlockQuoteView(block: RichTextBlock.BlockQuote, scope: RichTextScope) {
+private fun BlockQuoteView(block: RichTextBlock.BlockQuote, scope: RichTextScope, segmentBase: Int) {
     // A rounded vertical bar (width 3, radius 1.5, separator color) drawn in the left gutter, 9pt to the left of
     // secondary-colored content indented by indentStep (22): bar spans x 10..13, content starts at 22. The bar is
     // PAINTED (drawBehind) rather than a fillMaxHeight sibling, so it never forces intrinsic-height measurement of
@@ -218,24 +277,28 @@ private fun BlockQuoteView(block: RichTextBlock.BlockQuote, scope: RichTextScope
             .padding(start = scope.theme.indentStep.dp),
         verticalArrangement = Arrangement.spacedBy(scope.theme.blockSpacing.dp),
     ) {
+        var base = segmentBase
         for (child in block.blocks) {
-            BlockView(child, scope.colors.secondary, scope)
+            BlockView(child, scope.colors.secondary, scope, base)
+            base += RichTextRenderedText.segmentCount(child)
         }
     }
 }
 
 @Composable
-private fun ListView(block: RichTextBlock.ListBlock, color: Color, scope: RichTextScope) {
+private fun ListView(block: RichTextBlock.ListBlock, color: Color, scope: RichTextScope, segmentBase: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(scope.theme.listSpacing.dp)) {
+        var base = segmentBase
         block.items.forEachIndexed { index, itemBlocks ->
             val marker = if (block.ordered) "${block.start + index}." else "•"
-            ListItemView(marker, itemBlocks, color, scope)
+            ListItemView(marker, itemBlocks, color, scope, base)
+            base += itemBlocks.sumOf { RichTextRenderedText.segmentCount(it) }
         }
     }
 }
 
 @Composable
-private fun ListItemView(marker: String, itemBlocks: List<RichTextBlock>, color: Color, scope: RichTextScope) {
+private fun ListItemView(marker: String, itemBlocks: List<RichTextBlock>, color: Color, scope: RichTextScope, segmentBase: Int) {
     Row(Modifier.fillMaxWidth()) {
         // Leading gutter (at least indentStep) holding the bullet/ordinal in the secondary color, so item content
         // aligns at indentStep; nested lists indent additively via their own gutter. widthIn(min) rather than a
@@ -252,8 +315,10 @@ private fun ListItemView(marker: String, itemBlocks: List<RichTextBlock>, color:
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(scope.theme.blockSpacing.dp),
         ) {
+            var base = segmentBase
             for (child in itemBlocks) {
-                BlockView(child, color, scope)
+                BlockView(child, color, scope, base)
+                base += RichTextRenderedText.segmentCount(child)
             }
         }
     }
@@ -272,9 +337,52 @@ internal fun RichInlineText(
     scope: RichTextScope,
     style: TextStyle,
     modifier: Modifier = Modifier,
+    currentMatch: RichTextRange? = null,
 ) {
     val inlineContent = rememberInlineImageContent(result.images, scope)
-    CodePillText(result, style, scope.colors.codeFill, modifier, inlineContent)
+    CodePillText(result, style, scope.colors.codeFill, modifier, inlineContent, currentMatch, scope.onCurrentMatchBounds)
+}
+
+// The find hook a text composable attaches when it holds the CURRENT match: the text layout and the position on
+// screen are captured, and once both are known the match's bounds are reported in window coordinates - the one
+// space a scroller elsewhere in the hierarchy can convert from. Nothing is attached when there is no current match.
+internal class MatchBoundsHooks(val onTextLayout: (TextLayoutResult) -> Unit, val modifier: Modifier)
+
+@Composable
+internal fun rememberMatchBounds(currentMatch: RichTextRange?, report: ((Rect?) -> Unit)?): MatchBoundsHooks {
+    if (currentMatch == null || report == null) {
+        return remember { MatchBoundsHooks({}, Modifier) }
+    }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    LaunchedEffect(currentMatch, layout, coordinates, report) {
+        val laidOut = layout ?: return@LaunchedEffect
+        val coords = coordinates ?: return@LaunchedEffect
+        if (!coords.isAttached) return@LaunchedEffect
+        report(matchBounds(laidOut, currentMatch, coords))
+    }
+    return remember {
+        MatchBoundsHooks(
+            onTextLayout = { layout = it },
+            modifier = Modifier.onGloballyPositioned { coordinates = it },
+        )
+    }
+}
+
+// The union of the first and last character boxes of [range], in window coordinates: enough to scroll to.
+private fun matchBounds(layout: TextLayoutResult, range: RichTextRange, coords: LayoutCoordinates): Rect? {
+    val length = layout.layoutInput.text.length
+    val start = range.start.coerceIn(0, maxOf(0, length - 1))
+    val end = (range.end - 1).coerceIn(start, maxOf(0, length - 1))
+    if (length == 0) return null
+    val first = layout.getBoundingBox(start)
+    val last = layout.getBoundingBox(end)
+    val local = Rect(
+        minOf(first.left, last.left), minOf(first.top, last.top),
+        maxOf(first.right, last.right), maxOf(first.bottom, last.bottom),
+    )
+    val topLeft = coords.localToWindow(Offset(local.left, local.top))
+    return Rect(topLeft.x, topLeft.y, topLeft.x + local.width, topLeft.y + local.height)
 }
 
 // Renders inline text, painting a rounded pill (radius 3, 2dp horizontal / 1dp vertical padding, codeFill)
@@ -288,9 +396,15 @@ internal fun CodePillText(
     codeFill: Color,
     modifier: Modifier = Modifier,
     inlineContent: Map<String, InlineTextContent> = emptyMap(),
+    currentMatch: RichTextRange? = null,
+    onCurrentMatchBounds: ((Rect?) -> Unit)? = null,
 ) {
+    val bounds = rememberMatchBounds(currentMatch, onCurrentMatchBounds)
     if (result.codeSpans.isEmpty()) {
-        Text(text = result.text, style = style, inlineContent = inlineContent, modifier = modifier)
+        Text(
+            text = result.text, style = style, inlineContent = inlineContent,
+            onTextLayout = bounds.onTextLayout, modifier = modifier.then(bounds.modifier),
+        )
         return
     }
     val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -298,8 +412,8 @@ internal fun CodePillText(
         text = result.text,
         style = style,
         inlineContent = inlineContent,
-        onTextLayout = { layout.value = it },
-        modifier = modifier.drawBehind {
+        onTextLayout = { layout.value = it; bounds.onTextLayout(it) },
+        modifier = modifier.then(bounds.modifier).drawBehind {
             val result2 = layout.value ?: return@drawBehind
             val hPad = 2.dp.toPx()
             val vPad = 1.dp.toPx()

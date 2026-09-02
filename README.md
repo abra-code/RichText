@@ -38,6 +38,8 @@ Three layers, each usable without the one above it:
 
 A chat transcript takes layers 1 and 2 only: it runs the engine over every message, keeps one cross-message cursor of its own, and hands each message just its ranges.
 
+The Android port has the same three layers (`RichTextSearch` / `RichTextPlainText`, `RichText(highlights = ..., onCurrentMatchBounds = ...)`, `RichTextFindController` / `RichTextFindBar`). Its rendered text is assembled from the per-block texts in draw order (`RichTextRenderedText`), one segment per drawn `Text`, and the bar is opened by a host affordance rather than Cmd-F.
+
 ## How it works
 
 - **One model, one attributed string, one text view.** `RichTextDocument` (blocks + inline runs) is

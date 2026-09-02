@@ -31,7 +31,7 @@ import kotlin.math.roundToInt
 private const val MAX_LAST_COLUMN_WIDTH_DP = 320f
 
 @Composable
-internal fun RichTextTableView(block: RichTextBlock.Table, color: Color, scope: RichTextScope) {
+internal fun RichTextTableView(block: RichTextBlock.Table, color: Color, scope: RichTextScope, segmentBase: Int) {
     val columns = maxOf(block.headers.size, block.rows.maxOfOrNull { it.size } ?: 0)
     if (columns == 0) return
 
@@ -43,10 +43,14 @@ internal fun RichTextTableView(block: RichTextBlock.Table, color: Color, scope: 
     // Cell text is built with the inline builder (header cells bold), carrying code-span ranges so cells get the
     // same rounded pills as body text. Any image in a cell falls back to its alt text (no inline-content map
     // here), acceptable for the rare image-in-table case. Memoized so streaming re-renders do not rebuild cells.
-    val cells: List<List<RichTextInlineResult>> = remember(block, color, scope.colors) {
-        allRows.map { (row, header) ->
+    // Each cell is one rendered-text segment, header row first, in the same order the layout walk assigns them.
+    // Keyed on THIS table's local highlights, not the document's, so a match moving elsewhere rebuilds nothing here.
+    val locals = List(allRows.size * columns) { scope.local(segmentBase + it) }
+    val cells: List<List<RichTextInlineResult>> = remember(block, color, scope.colors, locals) {
+        allRows.mapIndexed { r, (row, header) ->
             (0 until columns).map { c ->
                 buildRichInlines(row.getOrNull(c) ?: emptyList(), scope.colors, baseColor = color, initialBold = header)
+                    .withHighlights(locals[r * columns + c])
             }
         }
     }
@@ -64,7 +68,11 @@ internal fun RichTextTableView(block: RichTextBlock.Table, color: Color, scope: 
             content = {
                 for (r in allRows.indices) {
                     for (c in 0 until columns) {
-                        CodePillText(cells[r][c], style = cellStyle, codeFill = scope.colors.codeFill)
+                        CodePillText(
+                            cells[r][c], style = cellStyle, codeFill = scope.colors.codeFill,
+                            currentMatch = scope.local(segmentBase + r * columns + c)?.currentRange,
+                            onCurrentMatchBounds = scope.onCurrentMatchBounds,
+                        )
                     }
                 }
             },
