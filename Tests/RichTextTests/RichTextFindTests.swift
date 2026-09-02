@@ -62,7 +62,8 @@ final class RichTextFindTests: XCTestCase {
         #endif
         withExtendedLifetime(owner) {
             textView.frame = CGRect(x: 0, y: 0, width: 300, height: 1000)
-            guard let layoutManager = textView.textLayoutManager, let storage = textView.textStorage else {
+            // AppKit's textStorage is optional, UIKit's is not.
+            guard let layoutManager = textView.textLayoutManager, let storage = textView.textStorage as NSTextStorage? else {
                 return XCTFail("no TextKit 2 stack")
             }
             let matches = RichTextSearch.matches(in: storage, query: "fox")
@@ -83,6 +84,39 @@ final class RichTextFindTests: XCTestCase {
 
             RichTextHighlightTK2.apply(nil, to: layoutManager)
             XCTAssertNil(renderingBackground(at: start, in: layoutManager))
+        }
+    }
+
+    // Whether the fragment subviews actually repaint cannot be observed in a test process (no display
+    // cycle runs; `needsDisplay` is not even recorded off screen). That was measured in the running demo
+    // by counting fragment draws - see Private/commit-notes-tk2-highlight-repaint.md. This only checks
+    // the call is safe on a live view with and without a window.
+    func testTextKit2InvalidateDisplayIsSafeOnALiveView() {
+        let document = RichTextDocument(markdown: markdown)
+        #if canImport(AppKit)
+        let (textView, owner) = RichTextAppKit.makeTextKit2View(document)
+        #else
+        let (textView, owner) = RichTextUIKit.makeTextKit2View(document)
+        #endif
+        withExtendedLifetime(owner) {
+            textView.frame = CGRect(x: 0, y: 0, width: 300, height: 1000)
+            guard let layoutManager = textView.textLayoutManager else {
+                return XCTFail("no TextKit 2 stack")
+            }
+            layoutManager.ensureLayout(for: layoutManager.documentRange)
+            let matches = RichTextSearch.matches(in: document, query: "fox", engine: .textKit2)
+            RichTextHighlightTK2.apply(RichTextHighlights(matches: matches, current: 0), to: layoutManager)
+            // The fragment subviews only exist after a display pass, but the container views the walk
+            // descends through are there from the start: if the hierarchy ever flattens, this says so.
+            XCTAssertFalse(textView.subviews.isEmpty)
+            RichTextHighlightTK2.invalidateDisplay(in: textView)
+            #if canImport(AppKit)
+            let window = NSWindow(contentRect: textView.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = textView
+            RichTextHighlightTK2.invalidateDisplay(in: textView)
+            window.contentView = nil
+            #endif
+            XCTAssertEqual(matches.count, 3)
         }
     }
 

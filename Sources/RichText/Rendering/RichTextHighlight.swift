@@ -10,7 +10,10 @@
 //   - TextKit 2: rendering attributes on the NSTextLayoutManager, which are the API made for exactly
 //     this - "attributes that don't affect layout" - and which the custom layout fragment's super.draw
 //     honors on both platforms. (A host that also enables NSTextView's own find bar would see its
-//     highlights cleared by this: the applier owns the .backgroundColor rendering attribute.)
+//     highlights cleared by this: the applier owns the .backgroundColor rendering attribute.) A rendering
+//     attribute asks nothing to redraw, so the applier's `invalidateDisplay` follows every change and
+//     marks the text view and all its descendants dirty (see there for why nothing less reaches the
+//     fragment subviews).
 // The current match is painted in a second color, and its frame is reported back so an embedding
 // scroller (a chat transcript, a document window) can bring it into view; see RichTextCurrentMatchAnchorKey
 // and RichTextMatchFrameReporter.
@@ -213,6 +216,46 @@ enum RichTextHighlightTK2 {
             layoutManager.setRenderingAttributes([.backgroundColor: color], for: textRange)
         }
     }
+
+    /// Make a rendering-attribute change visible. Setting a rendering attribute changes what the next draw
+    /// shows but asks nothing to draw, so without this the highlights appear on the next scroll. Both text
+    /// views draw each fragment into a subview of its own (AppKit's viewport element views, UIKit's fragment
+    /// views) that is reused across viewport passes, and a dirty flag on the text view itself does not
+    /// cascade into them - nor does invalidating the layout of the ranges, the whole document, or asking
+    /// the viewport layout controller to lay out again (measured on macOS 26 by counting fragment draws in
+    /// the demo: zero for every one of those, one viewport's worth when the descendants are marked). So the
+    /// descendants are marked dirty: one repaint of the visible fragments, no layout, whatever the number
+    /// of matches (the walk is a handful of views: the containers plus one element view per visible
+    /// fragment). The text view itself is marked as well, for an OS version that draws glyphs in its own
+    /// `draw(_:)`. Verified on macOS 26; iOS uses the same mechanism and has not been run here.
+    #if canImport(AppKit)
+    static func invalidateDisplay(in textView: NSTextView) {
+        textView.needsDisplay = true
+        markDescendantsDirty(textView)
+    }
+
+    private static func markDescendantsDirty(_ view: NSView) {
+        for subview in view.subviews {
+            subview.needsDisplay = true
+            markDescendantsDirty(subview)
+        }
+    }
+    #elseif canImport(UIKit)
+    static func invalidateDisplay(in textView: UITextView) {
+        textView.setNeedsDisplay()
+        markDescendantsDirty(textView)
+    }
+
+    /// A UITextView is a scroll view, so the walk also meets its indicators and its selection views. An
+    /// image view is skipped: setNeedsDisplay is documented as a no-op on one, and skipping it is the
+    /// cheap hedge against an internal image-backed view whose contents a forced display could clear.
+    private static func markDescendantsDirty(_ view: UIView) {
+        for subview in view.subviews where !(subview is UIImageView) {
+            subview.setNeedsDisplay()
+            markDescendantsDirty(subview)
+        }
+    }
+    #endif
 
     /// The union of the line-segment frames the range occupies, in the layout manager's container
     /// coordinates; nil for an empty or out-of-range range.

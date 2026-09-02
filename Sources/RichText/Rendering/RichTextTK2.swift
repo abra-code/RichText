@@ -27,13 +27,15 @@ final class TextKit2Coordinator {
     var contentGeneration = 0
 }
 
-// Applies the find highlights as rendering attributes (RichTextHighlightTK2) when they changed, and
-// schedules the current match's frame report (see RichTextMatchFrameReporter). Shared by the AppKit /
-// UIKit representables; `containerOrigin` is evaluated at measurement time, not now.
+// Applies the find highlights as rendering attributes (RichTextHighlightTK2) when they changed, asks the
+// view to show them (`invalidateDisplay`), and schedules the current match's frame report (see
+// RichTextMatchFrameReporter). Shared by the AppKit / UIKit representables; `containerOrigin` is evaluated
+// at measurement time, not now.
 @MainActor
 private func applyHighlightsTK2(_ highlights: RichTextHighlights?, layoutManager: NSTextLayoutManager?,
                                 coordinator: TextKit2Coordinator, containerOrigin: @escaping () -> CGPoint,
                                 storageLength: @escaping () -> Int, containerWidth: @escaping () -> CGFloat,
+                                invalidateDisplay: () -> Void,
                                 report: @escaping @MainActor (CGRect?) -> Void) {
     guard let layoutManager else {
         return
@@ -42,6 +44,8 @@ private func applyHighlightsTK2(_ highlights: RichTextHighlights?, layoutManager
         coordinator.needsHighlightReapply = false
         coordinator.appliedHighlights = highlights
         RichTextHighlightTK2.apply(highlights, to: layoutManager)
+        // After a content change the view redraws anyway; the extra marking costs nothing but a flag.
+        invalidateDisplay()
     }
     scheduleMatchFrameTK2(highlights?.currentRange, layoutManager: layoutManager, coordinator: coordinator,
                           containerOrigin: containerOrigin, storageLength: storageLength,
@@ -118,6 +122,7 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
                            containerOrigin: { [weak textView] in textView?.textContainerOrigin ?? .zero },
                            storageLength: { [weak textView] in textView?.textStorage?.length ?? 0 },
                            containerWidth: { [weak textView] in textView?.textContainer?.size.width ?? 0 },
+                           invalidateDisplay: { RichTextHighlightTK2.invalidateDisplay(in: textView) },
                            report: onCurrentMatchFrame)
     }
 
@@ -292,6 +297,7 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
                            },
                            storageLength: { [weak textView] in textView?.textStorage.length ?? 0 },
                            containerWidth: { [weak textView] in textView?.textContainer.size.width ?? 0 },
+                           invalidateDisplay: { RichTextHighlightTK2.invalidateDisplay(in: textView) },
                            report: onCurrentMatchFrame)
     }
 
