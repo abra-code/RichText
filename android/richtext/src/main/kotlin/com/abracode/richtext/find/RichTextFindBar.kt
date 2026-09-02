@@ -105,6 +105,9 @@ fun RichTextFindBar(controller: RichTextFindController, modifier: Modifier = Mod
                     OptionItem("Match diacritics", controller.options.diacriticSensitive) {
                         controller.options = controller.options.copy(diacriticSensitive = it)
                     }
+                    OptionItem("Regular expression", controller.options.regularExpression) {
+                        controller.options = controller.options.copy(regularExpression = it)
+                    }
                 }
             }
             IconButton(onClick = { controller.dismiss() }) {

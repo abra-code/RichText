@@ -64,6 +64,72 @@ final class RichTextSearchTests: XCTestCase {
         XCTAssertEqual(ranges(text, "\u{1F600}").count, 2)
     }
 
+    // MARK: - Regular expressions
+
+    private let regex = RichTextSearchOptions(regularExpression: true)
+
+    func testRegularExpressionMatchesAndFoldsCaseByDefault() {
+        XCTAssertEqual(ranges("cat Cot cut", "c.t", regex).count, 3)
+        // Classes are Unicode-aware (and Android compiles with the flag that makes java.util.regex agree).
+        XCTAssertEqual(ranges("\u{661}\u{662}\u{663} x", "\\d+", regex), [NSRange(location: 0, length: 3)])
+        XCTAssertEqual(ranges("\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442} !", "\\w+", regex), [NSRange(location: 0, length: 6)])
+        XCTAssertEqual(ranges("\u{394}\u{395}\u{396}", "\u{3b4}\u{3b5}\u{3b6}", regex), [NSRange(location: 0, length: 3)])
+        XCTAssertEqual(ranges("cat Cot cut", "c.t", RichTextSearchOptions(caseSensitive: true, regularExpression: true)),
+                       [NSRange(location: 0, length: 3), NSRange(location: 8, length: 3)])
+        XCTAssertEqual(ranges("v1.2 and v10", "v\\d+(\\.\\d+)?", regex),
+                       [NSRange(location: 0, length: 4), NSRange(location: 9, length: 3)])
+        // The same text as literal: a dot is a dot.
+        XCTAssertEqual(ranges("cat c.t", "c.t"), [NSRange(location: 4, length: 3)])
+    }
+
+    func testRegularExpressionAnchorsMatchLinesAndSeeAcrossTheCursor() {
+        XCTAssertEqual(ranges("the a\nthe b\nother", "^the", regex).count, 2)
+        XCTAssertEqual(ranges("a end\nend b", "end$", regex), [NSRange(location: 2, length: 3)])
+        // The search resumes after each match: `^` must still mean a line start there, not the resume
+        // point, and a lookbehind must still see the character before it.
+        XCTAssertEqual(ranges("ab", "a|^b", regex), [NSRange(location: 0, length: 1)])
+        // After "a" is matched the search resumes at "b", and the lookbehind must reach the "a" before it.
+        XCTAssertEqual(ranges("ab", "a|(?<=a)b", regex), [NSRange(location: 0, length: 1), NSRange(location: 1, length: 1)])
+    }
+
+    func testRegularExpressionSkipsEmptyMatches() {
+        XCTAssertEqual(ranges("baab", "a*", regex), [NSRange(location: 1, length: 2)])
+        XCTAssertEqual(ranges("xyz", "^", regex), [])
+        XCTAssertEqual(ranges("xyz", "$", regex), [], "an empty match at the end must not step past the text")
+        XCTAssertEqual(ranges("xyz\nq", "z$", regex), [NSRange(location: 2, length: 1)])
+    }
+
+    func testRegularExpressionHonorsWholeWordAndLimit() {
+        let whole = RichTextSearchOptions(wholeWord: true, regularExpression: true)
+        XCTAssertEqual(ranges("cat concatenate cot.", "c.t", whole), [NSRange(location: 0, length: 3), NSRange(location: 16, length: 3)])
+        XCTAssertEqual(ranges("a a a a", "a", RichTextSearchOptions(regularExpression: true, limit: 2)).count, 2)
+    }
+
+    func testRegularExpressionFoldsDiacriticsAndReportsOriginalRanges() {
+        XCTAssertEqual(ranges("resume r\u{e9}sum\u{e9}", "r.sume", regex), [NSRange(location: 0, length: 6), NSRange(location: 7, length: 6)])
+        XCTAssertEqual(ranges("resume r\u{e9}sum\u{e9}", "r.sume", RichTextSearchOptions(diacriticSensitive: true, regularExpression: true)),
+                       [NSRange(location: 0, length: 6)])
+        // The pattern is folded too, and a decomposed accent in the text is covered by the reported range.
+        XCTAssertEqual(ranges("resume", "r\u{e9}sum\u{e9}", regex), [NSRange(location: 0, length: 6)])
+        XCTAssertEqual(ranges("cafe\u{301} x", "caf.", regex), [NSRange(location: 0, length: 5)])
+        XCTAssertEqual(ranges("cafe\u{301}", "caf.", regex), [NSRange(location: 0, length: 5)], "a trailing mark is covered")
+        // Validity is judged on the pattern that runs, the folded one: a lone mark before a quantifier
+        // folds away and leaves the quantifier with nothing to bind.
+        XCTAssertFalse(RichTextSearch.isValidQuery("\u{301}?", options: regex))
+        XCTAssertTrue(RichTextSearch.isValidQuery("\u{301}?", options: RichTextSearchOptions(diacriticSensitive: true, regularExpression: true)))
+        // A surrogate pair in the text keeps the map exact past it.
+        XCTAssertEqual(ranges("\u{1F600} caf\u{e9}", "caf.", regex), [NSRange(location: 3, length: 4)])
+    }
+
+    func testInvalidRegularExpressionMatchesNothingAndSaysSo() {
+        XCTAssertEqual(ranges("(anything", "(", regex), [])
+        XCTAssertFalse(RichTextSearch.isValidQuery("(", options: regex))
+        XCTAssertTrue(RichTextSearch.isValidQuery("(", options: .default), "a literal parenthesis is a fine query")
+        XCTAssertTrue(RichTextSearch.isValidQuery("(a|b)", options: regex))
+        // A literal search still finds the parenthesis.
+        XCTAssertEqual(ranges("(anything", "("), [NSRange(location: 0, length: 1)])
+    }
+
     // MARK: - Snippets
 
     func testSnippetStaysOnTheMatchLineAndCollapsesWhitespace() {

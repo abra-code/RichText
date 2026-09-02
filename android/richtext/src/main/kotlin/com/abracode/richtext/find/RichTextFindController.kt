@@ -126,10 +126,15 @@ class RichTextFindController {
     val highlights: RichTextHighlights?
         get() = if (ranges.isEmpty()) null else RichTextHighlights(ranges, currentIndex, style)
 
-    /** "3 of 12", "No matches", or "" for an empty query. With `options.limit` reached, "3 of 500+". */
+    /**
+     * "3 of 12", "No matches", or "" for an empty query. With `options.limit` reached, "3 of 500+". "Invalid
+     * expression" for a regular expression that does not compile (a reader mid-way through typing one), which is
+     * not the same as the document lacking it.
+     */
     val summary: String
         get() {
             if (queryState.isBlank()) return ""
+            if (!RichTextSearch.isValidQuery(queryState, optionsState)) return "Invalid expression"
             val index = currentIndex ?: return "No matches"
             if (ranges.isEmpty()) return "No matches"
             val capped = optionsState.limit?.let { ranges.size >= it } ?: false

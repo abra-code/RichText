@@ -6,6 +6,8 @@ import com.abracode.richtext.model.RichTextInline
 import com.abracode.richtext.model.plainText
 import com.abracode.richtext.rendering.RichTextRenderedText
 import java.text.Normalizer
+import java.util.regex.Pattern
+import java.util.regex.PatternSyntaxException
 
 // Port of Sources/RichText/Search/RichTextSearch.swift - the find ENGINE: pure functions from text + query to
 // match ranges, with no composable, no state and nothing platform-specific. It is the bottom of a three-layer
@@ -23,8 +25,22 @@ import java.text.Normalizer
 data class RichTextSearchOptions(
     val caseSensitive: Boolean = false,
     val diacriticSensitive: Boolean = false,
-    /** Match only where the query is bounded by non-word characters (letters, digits, underscore) or the text's ends. */
+    /**
+     * Match only where the query is bounded by non-word characters (letters, digits, underscore) or the text's
+     * ends. Applies to a regular expression's matches too.
+     */
     val wholeWord: Boolean = false,
+    /**
+     * Read the query as a regular expression (java.util.regex syntax here, ICU on Apple: the two agree on the
+     * common ECMAScript subset a reader types) instead of literal text. `^` and `$` match at line boundaries and
+     * `.` stops at a newline. The other options keep their meaning: case folding becomes the engine's
+     * case-insensitive mode, diacritic folding strips marks from both the text and the pattern before matching
+     * (ranges are still reported in the original text; a combining mark in the pattern is dropped too, which can
+     * change what the pattern means or whether it compiles), and whole-word bounds each match. A match of zero
+     * length is skipped, so `a*` lights up the runs of "a" and not every position. A pattern that does not compile
+     * matches nothing; [RichTextSearch.isValidQuery] tells a bar to say so.
+     */
+    val regularExpression: Boolean = false,
     /** Stop after this many matches (null: unbounded). A one-letter query over a long document yields thousands. */
     val limit: Int? = null,
     /** How many characters of context [RichTextMatch.snippet] keeps on either side of the match. */
@@ -72,6 +88,7 @@ object RichTextSearch {
      */
     fun ranges(text: String, query: String, options: RichTextSearchOptions = RichTextSearchOptions.Default): List<RichTextRange> {
         if (query.isBlank()) return emptyList()
+        if (options.regularExpression) return regularExpressionRanges(text, query, options)
         val haystack = Folded.of(text, options)
         val needle = Folded.of(query, options).text
         if (needle.isEmpty()) return emptyList()
@@ -113,15 +130,104 @@ object RichTextSearch {
     fun matches(document: RichTextDocument, query: String, options: RichTextSearchOptions = RichTextSearchOptions.Default): List<RichTextMatch> =
         matches(RichTextRenderedText.layout(document).text, query, options)
 
+    /**
+     * Whether [query] can be searched for at all: always for literal text, and for a regular expression only when
+     * the pattern compiles. A find bar shows "Invalid expression" instead of "No matches" when this is false, so a
+     * reader mid-way through typing `(foo|bar` is not told the document lacks it.
+     */
+    fun isValidQuery(query: String, options: RichTextSearchOptions = RichTextSearchOptions.Default): Boolean {
+        if (!options.regularExpression) return true
+        return RegexCache.regex(query, options) != null
+    }
+
+    // --- Regular expressions. ---
+
+    private fun regularExpressionRanges(text: String, pattern: String, options: RichTextSearchOptions): List<RichTextRange> {
+        // Diacritic folding: java.util.regex has no diacritic-insensitive mode, so the text is folded up front (case
+        // is left to the engine's own flag; the cache folds the pattern the same way) and each match is mapped back
+        // through the folded text's origin map.
+        val regex = RegexCache.regex(pattern, options) ?: return emptyList()
+        val folded = if (options.diacriticSensitive) null else Folded.of(text, stripMarks = true, foldCase = false)
+        val haystack = folded?.text ?: text
+        val result = mutableListOf<RichTextRange>()
+        var cursor = 0
+        while (cursor < haystack.length) {
+            val limit = options.limit
+            if (limit != null && result.size >= limit) break
+            // find(input, startIndex) keeps the whole input as the region, so `^` still means a line start (not
+            // the resume point) and a lookbehind still sees the character before it.
+            val match = regex.find(haystack, cursor) ?: break
+            val start = match.range.first
+            // An empty match at the very end (`$`) is the last thing the pattern can find.
+            if (start >= haystack.length) break
+            val end = match.range.last + 1   // the exclusive end, also for an empty match
+            val mapped = if (folded != null) RichTextRange(folded.originStart(start), folded.originEnd(end)) else RichTextRange(start, end)
+            if (!mapped.isEmpty && (!options.wholeWord || isWholeWord(mapped, text))) {
+                result.add(mapped)
+                cursor = maxOf(end, cursor + 1)
+            } else {
+                // An empty match, or a whole-word rejection: one character on, as in the literal search.
+                cursor = haystack.offsetByCodePoints(start, 1)
+            }
+        }
+        return result
+    }
+
+    /**
+     * The last compiled pattern, keyed by the raw query and the options that shape the compile. A transcript
+     * search runs the engine once per message with the same query, and compiling a Pattern per message would cost
+     * more than the matching; one entry covers that, and a bar's keystroke replaces it. A pattern that failed to
+     * compile is remembered as null, so a broken pattern is not re-parsed per message either. [isValidQuery] and
+     * the search share this, so the pattern the bar calls valid is the pattern that runs. A Regex is immutable, so
+     * the single volatile slot needs no lock.
+     */
+    private object RegexCache {
+        private class Entry(val pattern: String, val caseSensitive: Boolean, val diacriticSensitive: Boolean, val regex: Regex?)
+
+        @Volatile private var entry: Entry? = null
+
+        fun regex(pattern: String, options: RichTextSearchOptions): Regex? {
+            val cached = entry
+            if (cached != null && cached.pattern == pattern && cached.caseSensitive == options.caseSensitive &&
+                cached.diacriticSensitive == options.diacriticSensitive
+            ) {
+                return cached.regex
+            }
+            // UNICODE_CHARACTER_CLASS makes \d, \w, \s and \b Unicode-aware like ICU's on Apple (the JVM's default is
+            // ASCII); UNICODE_CASE makes the case-insensitive flag fold beyond ASCII, as Kotlin's IGNORE_CASE does.
+            var flags = Pattern.MULTILINE or Pattern.UNICODE_CHARACTER_CLASS
+            if (!options.caseSensitive) flags = flags or Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE
+            // Under diacritic folding the pattern is folded like the text, so "resume" and "r\u00e9sum\u00e9" are one
+            // pattern. The fold only rewrites non-ASCII code points, so the pattern's syntax survives; what changes
+            // is that a combining mark in the pattern is dropped, so a quantifier after a decomposed accent binds to
+            // the base letter instead.
+            val searched = if (options.diacriticSensitive) pattern else Folded.of(pattern, stripMarks = true, foldCase = false).text
+            val compiled = try {
+                Pattern.compile(searched, flags).toRegex()
+            } catch (e: PatternSyntaxException) {
+                null
+            }
+            entry = Entry(pattern, options.caseSensitive, options.diacriticSensitive, compiled)
+            return compiled
+        }
+    }
+
     // --- Folding: a case- / diacritic-folded copy of the text with a map back to the original offsets, so a
     // match found in the folded text is reported in the original one. Folding is per code point, so a folded
-    // character never straddles two original characters and the map is exact.
+    // character never straddles two original characters and the map is exact. Under diacritic folding a non-ASCII
+    // letter becomes its base letter and every combining mark (Mn, Mc, Me - which includes the emoji presentation
+    // selector U+FE0F) is dropped.
 
     private class Folded(val text: String, val origin: IntArray, private val originalLength: Int) {
+        fun originStart(foldedStart: Int): Int = if (foldedStart >= origin.size) originalLength else origin[foldedStart]
+
         fun originEnd(foldedEnd: Int): Int = if (foldedEnd >= origin.size) originalLength else origin[foldedEnd]
 
         companion object {
-            fun of(source: String, options: RichTextSearchOptions): Folded {
+            fun of(source: String, options: RichTextSearchOptions): Folded =
+                of(source, stripMarks = !options.diacriticSensitive, foldCase = !options.caseSensitive)
+
+            fun of(source: String, stripMarks: Boolean, foldCase: Boolean): Folded {
                 val out = StringBuilder(source.length)
                 val origin = ArrayList<Int>(source.length)
                 var i = 0
@@ -130,15 +236,15 @@ object RichTextSearch {
                     val width = Character.charCount(cp)
                     // A combining mark of its own (decomposed text: "e" + U+0301) folds to nothing, so a
                     // decomposed accent matches like a precomposed one and the reported range extends over it.
-                    if (!options.diacriticSensitive && isMark(cp)) {
+                    if (stripMarks && isMark(cp)) {
                         i += width
                         continue
                     }
                     var piece = String(Character.toChars(cp))
-                    if (!options.diacriticSensitive) {
+                    if (stripMarks) {
                         piece = stripMarks(piece)
                     }
-                    if (!options.caseSensitive) {
+                    if (foldCase) {
                         piece = piece.lowercase()
                     }
                     for (unit in piece) {

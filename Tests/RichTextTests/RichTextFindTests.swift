@@ -157,6 +157,21 @@ final class RichTextFindTests: XCTestCase {
         XCTAssertEqual(controller.summary, "1 of 1+")
     }
 
+    func testControllerReportsAnInvalidExpression() {
+        let controller = RichTextFindController()
+        controller.bind(text: "fox (fox) fox")
+        controller.options.regularExpression = true
+        controller.query = "(fox"
+        XCTAssertEqual(controller.summary, "Invalid expression")
+        XCTAssertTrue(controller.ranges.isEmpty)
+        controller.query = "\\(fox\\)"
+        XCTAssertEqual(controller.summary, "1 of 1")
+        XCTAssertEqual(controller.ranges, [NSRange(location: 4, length: 5)])
+        // Back to literal: the same characters are a fine query that the text does not contain.
+        controller.options.regularExpression = false
+        XCTAssertEqual(controller.summary, "No matches")
+    }
+
     func testPresentBumpsFocusRequestsEveryTimeUnlessAHostAsksNotTo() {
         let controller = RichTextFindController()
         controller.present()

@@ -9,6 +9,7 @@ import com.abracode.richtext.search.RichTextRange
 import com.abracode.richtext.search.RichTextSearch
 import com.abracode.richtext.search.RichTextSearchOptions
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -100,6 +101,70 @@ class RichTextSearchTest {
         val text = "$smile smile $smile"
         assertEquals(listOf(r(3, 8)), ranges(text, "smile"))
         assertEquals(2, ranges(text, smile).size)
+    }
+
+    // --- Regular expressions. ---
+
+    private val regex = RichTextSearchOptions(regularExpression = true)
+
+    @Test fun regularExpressionMatchesAndFoldsCaseByDefault() {
+        assertEquals(3, ranges("cat Cot cut", "c.t", regex).size)
+        // Classes are Unicode-aware, as ICU's are on Apple: non-ASCII digits and letters count.
+        assertEquals(listOf(r(0, 3)), ranges("\u0661\u0662\u0663 x", "\\d+", regex))
+        assertEquals(listOf(r(0, 6)), ranges("\u043f\u0440\u0438\u0432\u0435\u0442 !", "\\w+", regex))
+        assertEquals(listOf(r(0, 3)), ranges("\u0394\u0395\u0396", "\u03b4\u03b5\u03b6", regex))
+        assertEquals(listOf(r(0, 3), r(8, 11)), ranges("cat Cot cut", "c.t", RichTextSearchOptions(caseSensitive = true, regularExpression = true)))
+        assertEquals(listOf(r(0, 4), r(9, 12)), ranges("v1.2 and v10", "v\\d+(\\.\\d+)?", regex))
+        // The same text as literal: a dot is a dot.
+        assertEquals(listOf(r(4, 7)), ranges("cat c.t", "c.t"))
+    }
+
+    @Test fun regularExpressionAnchorsMatchLinesAndSeeAcrossTheCursor() {
+        assertEquals(2, ranges("the a\nthe b\nother", "^the", regex).size)
+        assertEquals(listOf(r(2, 5)), ranges("a end\nend b", "end$", regex))
+        // The search resumes after each match: `^` must still mean a line start there, not the resume point, and
+        // a lookbehind must still see the character before it.
+        assertEquals(listOf(r(0, 1)), ranges("ab", "a|^b", regex))
+        // After "a" is matched the search resumes at "b", and the lookbehind must reach the "a" before it.
+        assertEquals(listOf(r(0, 1), r(1, 2)), ranges("ab", "a|(?<=a)b", regex))
+    }
+
+    @Test fun regularExpressionSkipsEmptyMatches() {
+        assertEquals(listOf(r(1, 3)), ranges("baab", "a*", regex))
+        assertEquals(emptyList<RichTextRange>(), ranges("xyz", "^", regex))
+        assertEquals("an empty match at the end must not step past the text", emptyList<RichTextRange>(), ranges("xyz", "$", regex))
+        assertEquals(listOf(r(2, 3)), ranges("xyz\nq", "z$", regex))
+    }
+
+    @Test fun regularExpressionHonorsWholeWordAndLimit() {
+        val whole = RichTextSearchOptions(wholeWord = true, regularExpression = true)
+        assertEquals(listOf(r(0, 3), r(16, 19)), ranges("cat concatenate cot.", "c.t", whole))
+        assertEquals(2, ranges("a a a a", "a", RichTextSearchOptions(regularExpression = true, limit = 2)).size)
+    }
+
+    @Test fun regularExpressionFoldsDiacriticsAndReportsOriginalRanges() {
+        assertEquals(listOf(r(0, 6), r(7, 13)), ranges("resume r\u00e9sum\u00e9", "r.sume", regex))
+        assertEquals(listOf(r(0, 6)), ranges("resume r\u00e9sum\u00e9", "r.sume", RichTextSearchOptions(diacriticSensitive = true, regularExpression = true)))
+        // The pattern is folded too, and a decomposed accent in the text is covered by the reported range.
+        assertEquals(listOf(r(0, 6)), ranges("resume", "r\u00e9sum\u00e9", regex))
+        assertEquals(listOf(r(0, 5)), ranges("cafe\u0301 x", "caf.", regex))
+        assertEquals("a trailing mark is covered", listOf(r(0, 5)), ranges("cafe\u0301", "caf.", regex))
+        // Validity is judged on the pattern that runs, the folded one: a lone mark before a quantifier folds away
+        // and leaves the quantifier with nothing to bind.
+        assertFalse(RichTextSearch.isValidQuery("\u0301?", regex))
+        assertTrue(RichTextSearch.isValidQuery("\u0301?", RichTextSearchOptions(diacriticSensitive = true, regularExpression = true)))
+        // A surrogate pair in the text keeps the map exact past it.
+        val smile = String(Character.toChars(0x1F600))
+        assertEquals(listOf(r(3, 7)), ranges("$smile caf\u00e9", "caf.", regex))
+    }
+
+    @Test fun invalidRegularExpressionMatchesNothingAndSaysSo() {
+        assertEquals(emptyList<RichTextRange>(), ranges("(anything", "(", regex))
+        assertFalse(RichTextSearch.isValidQuery("(", regex))
+        assertTrue("a literal parenthesis is a fine query", RichTextSearch.isValidQuery("("))
+        assertTrue(RichTextSearch.isValidQuery("(a|b)", regex))
+        // A literal search still finds the parenthesis.
+        assertEquals(listOf(r(0, 1)), ranges("(anything", "("))
     }
 
     // --- Snippets. ---

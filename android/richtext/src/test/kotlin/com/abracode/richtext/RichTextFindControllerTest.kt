@@ -2,6 +2,7 @@ package com.abracode.richtext
 
 import com.abracode.richtext.find.RichTextFindController
 import com.abracode.richtext.model.RichTextDocument
+import com.abracode.richtext.search.RichTextRange
 import com.abracode.richtext.search.RichTextSearchOptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,6 +59,21 @@ class RichTextFindControllerTest {
         controller.options = RichTextSearchOptions(limit = 1)
         assertEquals(1, controller.ranges.size)
         assertEquals("1 of 1+", controller.summary)
+    }
+
+    @Test fun reportsAnInvalidExpression() {
+        val controller = RichTextFindController()
+        controller.bind("fox (fox) fox")
+        controller.options = RichTextSearchOptions(regularExpression = true)
+        controller.query = "(fox"
+        assertEquals("Invalid expression", controller.summary)
+        assertTrue(controller.ranges.isEmpty())
+        controller.query = "\\(fox\\)"
+        assertEquals("1 of 1", controller.summary)
+        assertEquals(listOf(RichTextRange(4, 9)), controller.ranges)
+        // Back to literal: the same characters are a fine query that the text does not contain.
+        controller.options = RichTextSearchOptions()
+        assertEquals("No matches", controller.summary)
     }
 
     @Test fun presentBumpsFocusRequestsUnlessAHostAsksNotTo() {

@@ -131,9 +131,14 @@ public final class RichTextFindController: ObservableObject {
     }
 
     /// "3 of 12", "No matches", or "" for an empty query. With `options.limit` reached, "3 of 500+".
+    /// "Invalid expression" for a regular expression that does not compile (a reader mid-way through
+    /// typing one), which is not the same as the document lacking it.
     public var summary: String {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return ""
+        }
+        if !RichTextSearch.isValidQuery(query, options: options) {
+            return "Invalid expression"
         }
         guard let currentIndex, !ranges.isEmpty else {
             return "No matches"

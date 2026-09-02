@@ -63,6 +63,7 @@ public struct RichTextFindBar: View {
                 Toggle("Match Case", isOn: $controller.options.caseSensitive)
                 Toggle("Whole Words", isOn: $controller.options.wholeWord)
                 Toggle("Match Diacritics", isOn: $controller.options.diacriticSensitive)
+                Toggle("Regular Expression", isOn: $controller.options.regularExpression)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
