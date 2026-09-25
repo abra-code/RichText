@@ -41,6 +41,7 @@ public struct RichText: View {
     private let metrics: RichTextDecorationMetrics
     private var widthBehavior: RichTextWidthBehavior = .fill
     private var highlights: RichTextHighlights?
+    private var remoteImages: RichTextRemoteImages = .automatic
     // The current match's frame in this view's coordinates, reported by the representable after layout and
     // republished as an anchor preference (RichTextCurrentMatchAnchorKey) for an embedding scroller.
     @State private var currentMatchFrame: CGRect?
@@ -75,6 +76,17 @@ public struct RichText: View {
     public func widthBehavior(_ behavior: RichTextWidthBehavior) -> RichText {
         var copy = self
         copy.widthBehavior = behavior
+        return copy
+    }
+
+    /// Returns a copy that fetches remote (http / https) images as `policy` says: `.automatic` (the default)
+    /// as soon as the document renders, `.onClick` when the user clicks (taps) an image's placeholder, which
+    /// names the image's host, or `.never`. Use `.onClick` or `.never` for Markdown from a party that should
+    /// not be able to make this device send a request - a model or an agent - since an image URL can carry
+    /// data out. See `RichTextRemoteImages`.
+    public func remoteImages(_ policy: RichTextRemoteImages) -> RichText {
+        var copy = self
+        copy.remoteImages = policy
         return copy
     }
 
@@ -113,10 +125,11 @@ public struct RichText: View {
         switch engine {
         case .textKit1:
             RichTextRepresentableTK1(attributed: attributed, widthBehavior: widthBehavior, highlights: highlights,
-                                     onCurrentMatchFrame: reportCurrentMatchFrame)
+                                     remoteImages: remoteImages, onCurrentMatchFrame: reportCurrentMatchFrame)
         case .textKit2:
             RichTextRepresentableTK2(attributed: attributed, metrics: metrics, widthBehavior: widthBehavior,
-                                     highlights: highlights, onCurrentMatchFrame: reportCurrentMatchFrame)
+                                     highlights: highlights, remoteImages: remoteImages,
+                                     onCurrentMatchFrame: reportCurrentMatchFrame)
         }
     }
 
@@ -142,6 +155,11 @@ private final class TextKitStack {
     let matchFrames = RichTextMatchFrameReporter()
     // Bumped on every content replacement, so the reporter sees a same-length replacement.
     var contentGeneration = 0
+    // The remote-image policy the current content was loaded under; a change re-runs the loading pass.
+    var remoteImages: RichTextRemoteImages = .automatic
+    #if canImport(UIKit)
+    var heldImageTap: RichTextHeldImageTap?
+    #endif
 
     init() {
         storage = NSTextStorage()
@@ -232,9 +250,18 @@ private func richTextFittingSize(storage: NSTextStorage?, container: NSTextConta
 // after which it sticks until the row is re-created. NSTextView's default textContainerOrigin does not undo
 // that offset, so the text renders low inside the bubble. Subtracting the offset draws the text from the top;
 // when there is no offset (the normal case, minY == 0) this is a no-op.
-final class RichTextTopAlignedTextView: NSTextView, RichTextDiagnosableTextView, RichTextHostSnapping {
+final class RichTextTopAlignedTextView: NSTextView, RichTextDiagnosableTextView, RichTextHostSnapping,
+                                        RichTextHeldImageClicking {
     let diag = RichTextViewDiagnostics()
     var snapsToHostBounds = false
+    var onHeldImageClick: ((RichTextImageAttachment) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if handleHeldImageClick(event) {
+            return
+        }
+        super.mouseDown(with: event)
+    }
 
     private var isMeasuringOrigin = false
     override var textContainerOrigin: NSPoint {
@@ -277,10 +304,28 @@ final class RichTextTopAlignedTextView: NSTextView, RichTextDiagnosableTextView,
     }
 }
 
+// What a loading pass or a click runs after an image arrives or a placeholder changes: re-apply cached images
+// to the LIVE storage, re-lay-out (a loaded image is bigger than its placeholder) and redraw (a placeholder
+// whose text changed keeps its size).
+@MainActor
+private func imageReload(_ textView: NSTextView, _ stack: TextKitStack) -> @MainActor () -> Void {
+    return { [weak textView, weak stack] in
+        guard let textView, let stack else {
+            return
+        }
+        RichTextImageLoading.applyCached(in: stack.storage)
+        stack.layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: stack.storage.length),
+                                             actualCharacterRange: nil)
+        textView.invalidateIntrinsicContentSize()
+        textView.needsDisplay = true
+    }
+}
+
 private struct RichTextRepresentableTK1:NSViewRepresentable {
     let attributed: NSAttributedString
     let widthBehavior: RichTextWidthBehavior
     let highlights: RichTextHighlights?
+    let remoteImages: RichTextRemoteImages
     let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKitStack {
@@ -304,6 +349,12 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
             .cursor: NSCursor.pointingHand,
         ]
         textView.snapsToHostBounds = true   // SwiftUI's adaptor sizes the platform view to fill its host
+        textView.onHeldImageClick = { [weak textView, weak stack] attachment in
+            guard let textView, let stack else {
+                return
+            }
+            RichTextImageLoading.loadOnClick(attachment, in: stack.storage, reload: imageReload(textView, stack))
+        }
         RichTextDiagnostics.register(textView)
         textView.diag.note(textView, "make", "len=\(attributed.length)")
         startImageLoading(textView, stack)
@@ -318,6 +369,8 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
             stack.storage.setAttributedString(attributed)
             stack.contentGeneration += 1
             textView.invalidateIntrinsicContentSize()
+            startImageLoading(textView, stack)
+        } else if stack.remoteImages != remoteImages {
             startImageLoading(textView, stack)
         }
         stack.layoutManager.highlights = highlights
@@ -342,19 +395,14 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
         }, report: onCurrentMatchFrame)
     }
 
-    // Fetch image attachments; when each arrives, re-apply cached images to the LIVE storage and re-lay-out
-    // (the attachment's placeholder size grows to the image size). Runs against stack.storage, not the
-    // captured `attributed`, so it is correct even if SwiftUI rebuilt the view with a new attributed string.
+    // Fetch image attachments (as remoteImages allows); when each arrives, re-apply cached images to the LIVE
+    // storage and re-lay-out (the attachment's placeholder size grows to the image size). Runs against
+    // stack.storage, not the captured `attributed`, so it is correct even if SwiftUI rebuilt the view with a
+    // new attributed string.
     private func startImageLoading(_ textView: NSTextView, _ stack: TextKitStack) {
-        RichTextImageLoading.startLoading(in: stack.storage) { [weak textView, weak stack] in
-            guard let textView, let stack else {
-                return
-            }
-            RichTextImageLoading.applyCached(in: stack.storage)
-            stack.layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: stack.storage.length),
-                                                 actualCharacterRange: nil)
-            textView.invalidateIntrinsicContentSize()
-        }
+        stack.remoteImages = remoteImages
+        RichTextImageLoading.startLoading(in: stack.storage, remoteImages: remoteImages,
+                                          reload: imageReload(textView, stack))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
@@ -374,10 +422,26 @@ private struct RichTextRepresentableTK1:NSViewRepresentable {
 
 #elseif canImport(UIKit)
 
+// See the AppKit twin.
+@MainActor
+private func imageReload(_ textView: UITextView, _ stack: TextKitStack) -> @MainActor () -> Void {
+    return { [weak textView, weak stack] in
+        guard let textView, let stack else {
+            return
+        }
+        RichTextImageLoading.applyCached(in: stack.storage)
+        stack.layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: stack.storage.length),
+                                             actualCharacterRange: nil)
+        textView.invalidateIntrinsicContentSize()
+        textView.setNeedsDisplay()
+    }
+}
+
 private struct RichTextRepresentableTK1:UIViewRepresentable {
     let attributed: NSAttributedString
     let widthBehavior: RichTextWidthBehavior
     let highlights: RichTextHighlights?
+    let remoteImages: RichTextRemoteImages
     let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKitStack {
@@ -395,6 +459,14 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.adjustsFontForContentSizeCategory = true
         textView.linkTextAttributes = [.foregroundColor: UIColor.link]
+        let tap = RichTextHeldImageTap(textView: textView)
+        tap.onTap = { [weak textView, weak stack] attachment in
+            guard let textView, let stack else {
+                return
+            }
+            RichTextImageLoading.loadOnClick(attachment, in: stack.storage, reload: imageReload(textView, stack))
+        }
+        stack.heldImageTap = tap
         startImageLoading(textView, stack)
         return textView
     }
@@ -405,6 +477,8 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
             stack.storage.setAttributedString(attributed)
             stack.contentGeneration += 1
             textView.invalidateIntrinsicContentSize()
+            startImageLoading(textView, stack)
+        } else if stack.remoteImages != remoteImages {
             startImageLoading(textView, stack)
         }
         stack.layoutManager.highlights = highlights
@@ -430,15 +504,9 @@ private struct RichTextRepresentableTK1:UIViewRepresentable {
 
     // See the AppKit twin: reload against the LIVE storage so it survives view/attributed rebuilds.
     private func startImageLoading(_ textView: UITextView, _ stack: TextKitStack) {
-        RichTextImageLoading.startLoading(in: stack.storage) { [weak textView, weak stack] in
-            guard let textView, let stack else {
-                return
-            }
-            RichTextImageLoading.applyCached(in: stack.storage)
-            stack.layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: stack.storage.length),
-                                                 actualCharacterRange: nil)
-            textView.invalidateIntrinsicContentSize()
-        }
+        stack.remoteImages = remoteImages
+        RichTextImageLoading.startLoading(in: stack.storage, remoteImages: remoteImages,
+                                          reload: imageReload(textView, stack))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {

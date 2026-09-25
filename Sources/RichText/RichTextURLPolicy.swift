@@ -10,6 +10,21 @@
 
 import Foundation
 
+/// When a document's REMOTE images (http / https) are fetched. Fetching is itself a disclosure: the request
+/// tells the image's host that this document was rendered, from which address, and anything the URL carries
+/// - so Markdown written by an untrusted party (a model, an agent, a web page) can use an image to send data
+/// wherever it likes the moment it is shown. `data:` images carry their bytes inline and are always shown;
+/// `file:` images are never read (see `RichTextURLPolicy.allowsImage`). An image already in the process-wide
+/// cache is shown in every mode, since showing cached bytes sends nothing.
+public enum RichTextRemoteImages: String, Sendable, Hashable, CaseIterable {
+    /// Fetched as soon as the document renders: the default, and the behavior before this option existed.
+    case automatic
+    /// A placeholder naming the image's host until the user clicks (taps) it; then that one image is fetched.
+    case onClick
+    /// Never fetched; the placeholder says so.
+    case never
+}
+
 public enum RichTextURLPolicy {
 
     // Hyperlink targets: navigation-only schemes. `javascript:`, `data:`, `file:`, and anything unknown are
@@ -39,5 +54,15 @@ public enum RichTextURLPolicy {
             return false
         }
         return allowedImageSchemes.contains(scheme)
+    }
+
+    /// Whether loading an image URL means a fetch from somewhere else (today http / https), which
+    /// `RichTextRemoteImages` governs: every allowed scheme except `data:`, whose bytes are already in the
+    /// document. Defined by exclusion, so a scheme added to `allowedImageSchemes` later is held by default.
+    public static func isRemoteImage(_ url: URL) -> Bool {
+        guard allowsImage(url), let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme != "data"
     }
 }

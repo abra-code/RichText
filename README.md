@@ -28,6 +28,15 @@ RichTextPasteboard.write(doc)
 `RichText` is read-only-but-selectable and self-sizes to its content for the proposed width, so it
 drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` for a runnable app.
 
+## Remote images
+
+Fetching an image is itself a disclosure: the request tells the image's host that the document was shown, from which address, and anything the URL carries. Markdown written by someone else, such as a model or an agent, can therefore use an image to send data wherever it likes the moment it renders. `RichText(...).remoteImages(_:)` decides when http and https images are fetched:
+- `.automatic` (the default): as soon as the document renders.
+- `.onClick`: a placeholder shows the image's alt text and host ("Click to load from example.com", "Tap" on iOS); a click on it fetches that one image.
+- `.never`: the placeholder says remote images are off.
+
+`data:` images carry their bytes in the document and always show; `file:` images are never read (`RichTextURLPolicy`). An image already in the shared cache shows in every mode, since showing cached bytes sends nothing. The Android port does not have this option yet; it fetches as `.automatic` does.
+
 ## Find and highlight
 
 Three layers, each usable without the one above it:

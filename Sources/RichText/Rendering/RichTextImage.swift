@@ -24,12 +24,26 @@ import AppKit
 import UIKit
 #endif
 
+/// Why an image that is not loaded is not being fetched (see RichTextRemoteImages).
+enum RichTextImageHold: Equatable {
+    /// Not held: loading, failed, or about to load.
+    case none
+    /// A remote image under `.onClick`: fetched when the user clicks (taps) its placeholder.
+    case awaitingClick
+    /// A remote image under `.never`.
+    case off
+}
+
 /// An image attachment that is a placeholder until its bytes load, then shows the (width-capped) image.
 final class RichTextImageAttachment: NSTextAttachment {
     let url: URL?
     let alt: String
     private(set) var loadedImage: RTVImage?
     private var failed = false
+    private(set) var hold: RichTextImageHold = .none
+    // Set by a click on the held placeholder, so a later loading pass under `.onClick` fetches this
+    // attachment instead of holding it again.
+    var approved = false
     // Not private: RichTextImageLoading (same file, different type) reads it so every cache lookup / load for
     // this attachment builds the SAME ImageRequest variant (see RichTextImageLoading.imageRequest).
     let maxWidth: CGFloat
@@ -56,7 +70,19 @@ final class RichTextImageAttachment: NSTextAttachment {
     func setImage(_ image: RTVImage) {
         loadedImage = image
         failed = false
+        hold = .none
         refresh()
+    }
+
+    /// Hold (or release) a not-yet-loaded image. Returns true when the placeholder changed and needs a redraw.
+    @discardableResult
+    func setHold(_ newHold: RichTextImageHold) -> Bool {
+        guard loadedImage == nil, hold != newHold else {
+            return false
+        }
+        hold = newHold
+        refresh()
+        return true
     }
 
     func markFailed() {
@@ -74,7 +100,8 @@ final class RichTextImageAttachment: NSTextAttachment {
             bounds = CGRect(origin: .zero, size: displaySize(loadedImage))
         } else {
             let size = CGSize(width: min(maxWidth, 240), height: 120)
-            image = RichTextImageAttachment.placeholderImage(size: size, alt: alt, failed: failed)
+            let label = RichTextImageAttachment.placeholderLabel(alt: alt, url: url, failed: failed, hold: hold)
+            image = RichTextImageAttachment.placeholderImage(size: size, label: label)
             bounds = CGRect(origin: .zero, size: size)
         }
     }
@@ -90,13 +117,37 @@ final class RichTextImageAttachment: NSTextAttachment {
         return CGSize(width: maxWidth, height: (image.size.height * scale).rounded())
     }
 
-    // A light rounded box with the alt text, shown while loading or if the load fails.
-    private static func placeholderImage(size: CGSize, alt: String, failed: Bool) -> RTVImage? {
+    /// The placeholder's text: the alt text while loading or after a failure; for a held remote image, the alt
+    /// text over a second line naming the image's host, so the user sees where a click would send a request.
+    static func placeholderLabel(alt: String, url: URL?, failed: Bool, hold: RichTextImageHold) -> String {
+        // The host as written, percent escapes kept: a decoded host could show an escaped "/" or line break
+        // and pass one domain off as another.
+        let host = url?.host(percentEncoded: true) ?? "the web"
+        switch hold {
+        case .awaitingClick:
+            #if canImport(AppKit)
+            let action = "Click"
+            #else
+            let action = "Tap"
+            #endif
+            return "\(alt.isEmpty ? "Image" : alt)\n\(action) to load from \(host)"
+        case .off:
+            return "\(alt.isEmpty ? "Image" : alt)\nNot loaded from \(host): remote images are off"
+        case .none:
+            if failed {
+                return alt.isEmpty ? "image unavailable" : "\(alt) (unavailable)"
+            }
+            return alt.isEmpty ? "loading image..." : alt
+        }
+    }
+
+    // A light rounded box with the label, one paragraph per line, each truncated rather than wrapped.
+    private static func placeholderImage(size: CGSize, label: String) -> RTVImage? {
         guard size.width > 1, size.height > 1 else {
             return nil
         }
         let rect = CGRect(origin: .zero, size: size)
-        let label = failed ? (alt.isEmpty ? "image unavailable" : "\(alt) (unavailable)") : (alt.isEmpty ? "loading image..." : alt)
+        let lineCount = CGFloat(label.split(separator: "\n", omittingEmptySubsequences: false).count)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingTail
@@ -105,8 +156,19 @@ final class RichTextImageAttachment: NSTextAttachment {
             .foregroundColor: RTVColors.secondary,
             .paragraphStyle: paragraph,
         ]
-        let text = NSAttributedString(string: label, attributes: attributes)
-        let inset = rect.insetBy(dx: 8, dy: max(0, (size.height - 16) / 2))
+        let text = NSMutableAttributedString(string: label, attributes: attributes)
+        // The last line of a held image's label names the host a click would contact. Truncate it in the
+        // middle, so a long host keeps its right end - the domain that receives the request - on screen: at
+        // the tail, "https://apple.com.images.chart.collector.example/" shows as "...from apple.com.images.c...".
+        let lastBreak = (label as NSString).range(of: "\n", options: .backwards)
+        if lastBreak.location != NSNotFound {
+            let hostParagraph = NSMutableParagraphStyle()
+            hostParagraph.alignment = .center
+            hostParagraph.lineBreakMode = .byTruncatingMiddle
+            text.addAttribute(.paragraphStyle, value: hostParagraph,
+                              range: NSRange(location: NSMaxRange(lastBreak), length: text.length - NSMaxRange(lastBreak)))
+        }
+        let inset = rect.insetBy(dx: 8, dy: max(0, (size.height - 16 * lineCount) / 2))
 
         let draw: () -> Void = {
             fillRoundedRect(rect.insetBy(dx: 0.5, dy: 0.5), radius: 6, color: RTVColors.codeFill)
@@ -254,31 +316,80 @@ enum RichTextImageLoading {
         return changed
     }
 
-    /// Start loading every not-yet-cached image URL in `content`. `reload` is called on the main actor after
-    /// each load finishes (it should re-apply cached images to the live storage and re-lay-out).
-    static func startLoading(in content: NSAttributedString, reload: @escaping @MainActor () -> Void) {
+    /// Start loading every not-yet-cached image URL in `content`, as `remoteImages` allows: under `.onClick`
+    /// and `.never` a remote (http / https) image is held with a placeholder instead of fetched, unless (under
+    /// `.onClick` only) the user already clicked it. `reload` is called on the main actor after each load
+    /// finishes, and once more when this pass changed a placeholder (it should re-apply cached images to the
+    /// live storage and re-lay-out).
+    static func startLoading(in content: NSAttributedString, remoteImages: RichTextRemoteImages = .automatic,
+                             reload: @escaping @MainActor () -> Void) {
         applyCached(in: content)
+        var placeholderChanged = false
         content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
             // Gate the scheme here so a disallowed URL (file:, javascript:, ...) is never fetched from
-            // disk/network - the attachment stays in its placeholder state. maxWidth aligns the cache-check
-            // and the load variant key with the attachment's stored variant (see imageRequest).
+            // disk/network - the attachment stays in its placeholder state.
             guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil,
-                  let url = attachment.url, RichTextURLPolicy.allowsImage(url),
-                  ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil,
-                  !inFlight.contains(url) else {
+                  let url = attachment.url, RichTextURLPolicy.allowsImage(url) else {
                 return
             }
-            let maxWidth = attachment.maxWidth
-            inFlight.insert(url)
-            Task {
-                let image = await load(url, maxWidth: maxWidth)
-                inFlight.remove(url)
-                if image == nil {
-                    attachment.markFailed()
+            // A click approved the image under .onClick; it does not outlive a switch to .never (a clicked
+            // image whose fetch failed would otherwise be fetched again here).
+            let held = remoteImages == .never || (remoteImages == .onClick && !attachment.approved)
+            if RichTextURLPolicy.isRemoteImage(url), held {
+                if attachment.setHold(remoteImages == .onClick ? .awaitingClick : .off) {
+                    placeholderChanged = true
                 }
-                applyCached(in: content)
-                reload()
+                return
             }
+            if attachment.setHold(.none) {
+                placeholderChanged = true
+            }
+            fetch(attachment, url: url, in: content, reload: reload)
+        }
+        if placeholderChanged {
+            reload()
+        }
+    }
+
+    /// A click (tap) on a held image's placeholder: fetch that image, and remember the click so later loading
+    /// passes over the same attachment fetch it too. Returns false, doing nothing, when the attachment was not
+    /// waiting for a click.
+    @discardableResult
+    static func loadOnClick(_ attachment: RichTextImageAttachment, in content: NSAttributedString,
+                            reload: @escaping @MainActor () -> Void) -> Bool {
+        guard attachment.hold == .awaitingClick, let url = attachment.url, RichTextURLPolicy.allowsImage(url) else {
+            return false
+        }
+        attachment.approved = true
+        attachment.setHold(.none)
+        fetch(attachment, url: url, in: content, reload: reload)
+        reload()
+        return true
+    }
+
+    /// Whether a fetch of `url` is running (for tests).
+    static func isFetching(_ url: URL) -> Bool {
+        return inFlight.contains(url)
+    }
+
+    // Fetch one attachment's image unless it is cached or already being fetched. maxWidth aligns the
+    // cache-check and the load variant key with the attachment's stored variant (see imageRequest).
+    private static func fetch(_ attachment: RichTextImageAttachment, url: URL, in content: NSAttributedString,
+                              reload: @escaping @MainActor () -> Void) {
+        guard ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil,
+              !inFlight.contains(url) else {
+            return
+        }
+        let maxWidth = attachment.maxWidth
+        inFlight.insert(url)
+        Task {
+            let image = await load(url, maxWidth: maxWidth)
+            inFlight.remove(url)
+            if image == nil {
+                attachment.markFailed()
+            }
+            applyCached(in: content)
+            reload()
         }
     }
 
@@ -293,3 +404,132 @@ enum RichTextImageLoading {
     }
 
 }
+
+extension RichTextImageLoading {
+    /// The held attachments of `content` that wait for a click, with their character indexes.
+    static func attachmentsAwaitingClick(in content: NSAttributedString) -> [(index: Int, attachment: RichTextImageAttachment)] {
+        var found: [(index: Int, attachment: RichTextImageAttachment)] = []
+        content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, range, _ in
+            if let attachment = value as? RichTextImageAttachment, attachment.hold == .awaitingClick {
+                found.append((range.location, attachment))
+            }
+        }
+        return found
+    }
+}
+
+#if canImport(AppKit)
+
+extension RichTextImageLoading {
+    /// The image attachment under `point` (in `textView`'s coordinates) whose placeholder waits for a click,
+    /// or nil. Each held attachment's own rectangle is tested, rather than the character nearest the point:
+    /// TextKit 2 answers an insertion-index query with the end of the document until the view has been laid
+    /// out for display, and a document holds few images.
+    static func heldAttachment(at point: CGPoint, in textView: NSTextView) -> RichTextImageAttachment? {
+        guard let storage = textView.textStorage, let window = textView.window else {
+            return nil
+        }
+        for (index, attachment) in attachmentsAwaitingClick(in: storage) {
+            let screenRect = textView.firstRect(forCharacterRange: NSRange(location: index, length: 1), actualRange: nil)
+            let rect = textView.convert(window.convertFromScreen(screenRect), from: nil)
+            if rect.contains(point) {
+                return attachment
+            }
+        }
+        return nil
+    }
+}
+
+/// A RichText text view that loads a held image when its placeholder is clicked (RichTextRemoteImages.onClick).
+@MainActor
+protocol RichTextHeldImageClicking: NSTextView {
+    var onHeldImageClick: ((RichTextImageAttachment) -> Void)? { get set }
+}
+
+extension RichTextHeldImageClicking {
+    /// Call first in mouseDown: true when the press began on a held image and has been handled. The image
+    /// is fetched only on a completed click - the mouse released on the same placeholder, with no modifier
+    /// keys - so a drag that starts on a placeholder, or a Control-click for the menu, sends nothing. A
+    /// press with modifiers is left to the text view (Shift extends a selection, Control opens the menu).
+    func handleHeldImageClick(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        guard let onHeldImageClick, modifiers.isEmpty,
+              let attachment = RichTextImageLoading.heldAttachment(at: convert(event.locationInWindow, from: nil), in: self) else {
+            return false
+        }
+        // The usual NSView tracking loop: consume the press until the button comes up.
+        var release: NSEvent?
+        while let next = window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            if next.type == .leftMouseUp {
+                release = next
+                break
+            }
+        }
+        if let release,
+           RichTextImageLoading.heldAttachment(at: convert(release.locationInWindow, from: nil), in: self) === attachment {
+            onHeldImageClick(attachment)
+        }
+        return true
+    }
+}
+
+#elseif canImport(UIKit)
+
+extension RichTextImageLoading {
+    /// The image attachment under `point` (in `textView`'s coordinates) whose placeholder waits for a tap,
+    /// or nil. The point must fall inside the attachment's own rectangle, not merely nearest to it.
+    static func heldAttachment(at point: CGPoint, in textView: UITextView) -> RichTextImageAttachment? {
+        // See the AppKit twin for why each held attachment is tested rather than the nearest character.
+        for (index, attachment) in attachmentsAwaitingClick(in: textView.textStorage) {
+            guard let start = textView.position(from: textView.beginningOfDocument, offset: index),
+                  let end = textView.position(from: start, offset: 1),
+                  let range = textView.textRange(from: start, to: end) else {
+                continue
+            }
+            if textView.firstRect(for: range).contains(point) {
+                return attachment
+            }
+        }
+        return nil
+    }
+}
+
+/// Loads a held image when its placeholder is tapped (RichTextRemoteImages.onClick). The recognizer begins only
+/// on a held image and recognizes alongside the text view's own gestures, so selection and links elsewhere are
+/// untouched. Retained by the representable's coordinator.
+@MainActor
+final class RichTextHeldImageTap: NSObject, UIGestureRecognizerDelegate {
+    private weak var textView: UITextView?
+    var onTap: ((RichTextImageAttachment) -> Void)?
+
+    init(textView: UITextView) {
+        self.textView = textView
+        super.init()
+        let recognizer = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+        recognizer.cancelsTouchesInView = false
+        recognizer.delegate = self
+        textView.addGestureRecognizer(recognizer)
+    }
+
+    @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended, let textView, let onTap,
+              let attachment = RichTextImageLoading.heldAttachment(at: recognizer.location(in: textView), in: textView) else {
+            return
+        }
+        onTap(attachment)
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let textView, onTap != nil else {
+            return false
+        }
+        return RichTextImageLoading.heldAttachment(at: gestureRecognizer.location(in: textView), in: textView) != nil
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return true
+    }
+}
+
+#endif

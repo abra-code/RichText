@@ -25,6 +25,11 @@ final class TextKit2Coordinator {
     var needsHighlightReapply = false
     let matchFrames = RichTextMatchFrameReporter()
     var contentGeneration = 0
+    // The remote-image policy the current content was loaded under; a change re-runs the loading pass.
+    var remoteImages: RichTextRemoteImages = .automatic
+    #if canImport(UIKit)
+    var heldImageTap: RichTextHeldImageTap?
+    #endif
 }
 
 // Applies the find highlights as rendering attributes (RichTextHighlightTK2) when they changed, asks the
@@ -84,11 +89,28 @@ private func measuredHeight(_ layoutManager: NSTextLayoutManager) -> CGFloat {
 
 #if canImport(AppKit)
 
+// What a loading pass or a click runs after an image arrives or a placeholder changes: re-apply cached images
+// to the live content, re-lay-out and redraw (see the TK1 twin in RichText.swift).
+@MainActor
+private func imageReloadTK2(_ textView: NSTextView) -> @MainActor () -> Void {
+    return { [weak textView] in
+        guard let textView, let content = RichTextAppKit.currentContent(of: textView),
+              let layoutManager = textView.textLayoutManager else {
+            return
+        }
+        RichTextImageLoading.applyCached(in: content)
+        layoutManager.invalidateLayout(for: layoutManager.documentRange)
+        textView.invalidateIntrinsicContentSize()
+        textView.needsDisplay = true
+    }
+}
+
 struct RichTextRepresentableTK2: NSViewRepresentable {
     let attributed: NSAttributedString
     let metrics: RichTextDecorationMetrics
     let widthBehavior: RichTextWidthBehavior
     let highlights: RichTextHighlights?
+    let remoteImages: RichTextRemoteImages
     let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKit2Coordinator {
@@ -102,9 +124,15 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
         let (textView, owner) = RichTextAppKit.makeTextKit2View(attributed: attributed, metrics: metrics)
         context.coordinator.owner = owner
         (textView as? RichTextHostSnapping)?.snapsToHostBounds = true   // SwiftUI adaptor fills its host
+        (textView as? RichTextHeldImageClicking)?.onHeldImageClick = { [weak textView] attachment in
+            guard let textView, let content = RichTextAppKit.currentContent(of: textView) else {
+                return
+            }
+            RichTextImageLoading.loadOnClick(attachment, in: content, reload: imageReloadTK2(textView))
+        }
         RichTextDiagnostics.register(textView)
         (textView as? RichTextDiagnosableTextView)?.diag.note(textView, "make", "len=\(attributed.length)")
-        startImageLoading(textView)
+        startImageLoading(textView, context.coordinator)
         return textView
     }
 
@@ -114,9 +142,11 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
                 .note(textView, "contentChange", "len=\(RichTextAppKit.currentContent(of: textView)?.length ?? -1) -> \(attributed.length)")
             RichTextAppKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
-            startImageLoading(textView)
+            startImageLoading(textView, context.coordinator)
             context.coordinator.needsHighlightReapply = true
             context.coordinator.contentGeneration += 1
+        } else if context.coordinator.remoteImages != remoteImages {
+            startImageLoading(textView, context.coordinator)
         }
         applyHighlightsTK2(highlights, layoutManager: textView.textLayoutManager, coordinator: context.coordinator,
                            containerOrigin: { [weak textView] in textView?.textContainerOrigin ?? .zero },
@@ -126,20 +156,14 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
                            report: onCurrentMatchFrame)
     }
 
-    // Fetch image attachments; when each arrives, re-apply cached images to the live content and re-lay-out.
-    private func startImageLoading(_ textView: NSTextView) {
+    // Fetch image attachments (as remoteImages allows); when each arrives, re-apply cached images to the live
+    // content and re-lay-out.
+    private func startImageLoading(_ textView: NSTextView, _ coordinator: TextKit2Coordinator) {
         guard let content = RichTextAppKit.currentContent(of: textView) else {
             return
         }
-        RichTextImageLoading.startLoading(in: content) { [weak textView] in
-            guard let textView, let content = RichTextAppKit.currentContent(of: textView),
-                  let layoutManager = textView.textLayoutManager else {
-                return
-            }
-            RichTextImageLoading.applyCached(in: content)
-            layoutManager.invalidateLayout(for: layoutManager.documentRange)
-            textView.invalidateIntrinsicContentSize()
-        }
+        coordinator.remoteImages = remoteImages
+        RichTextImageLoading.startLoading(in: content, remoteImages: remoteImages, reload: imageReloadTK2(textView))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
@@ -191,9 +215,18 @@ struct RichTextRepresentableTK2: NSViewRepresentable {
 // a real-time drag stream and click-drag selection silently fails - even though the caret cursor still
 // shows on hover. Clearing the delay on each recognizer as it is attached restores selection. (TextKit 1
 // is unaffected: its mouseDown enters a modal event-tracking loop that pulls events directly.)
-final class SelectableTextView: NSTextView, RichTextDiagnosableTextView, RichTextHostSnapping {
+final class SelectableTextView: NSTextView, RichTextDiagnosableTextView, RichTextHostSnapping,
+                                RichTextHeldImageClicking {
     let diag = RichTextViewDiagnostics()
     var snapsToHostBounds = false   // set true only under SwiftUI hosting (the factory also serves AppKit hosts)
+    var onHeldImageClick: ((RichTextImageAttachment) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if handleHeldImageClick(event) {
+            return
+        }
+        super.mouseDown(with: event)
+    }
 
     override func addGestureRecognizer(_ gestureRecognizer: NSGestureRecognizer) {
         gestureRecognizer.delaysPrimaryMouseButtonEvents = false
@@ -262,11 +295,27 @@ final class SelectableTextView: NSTextView, RichTextDiagnosableTextView, RichTex
 
 #elseif canImport(UIKit)
 
+// See the AppKit twin.
+@MainActor
+private func imageReloadTK2(_ textView: UITextView) -> @MainActor () -> Void {
+    return { [weak textView] in
+        guard let textView, let content = RichTextUIKit.currentContent(of: textView),
+              let layoutManager = textView.textLayoutManager else {
+            return
+        }
+        RichTextImageLoading.applyCached(in: content)
+        layoutManager.invalidateLayout(for: layoutManager.documentRange)
+        textView.invalidateIntrinsicContentSize()
+        textView.setNeedsDisplay()
+    }
+}
+
 struct RichTextRepresentableTK2: UIViewRepresentable {
     let attributed: NSAttributedString
     let metrics: RichTextDecorationMetrics
     let widthBehavior: RichTextWidthBehavior
     let highlights: RichTextHighlights?
+    let remoteImages: RichTextRemoteImages
     let onCurrentMatchFrame: @MainActor (CGRect?) -> Void
 
     func makeCoordinator() -> TextKit2Coordinator {
@@ -278,7 +327,15 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let (textView, owner) = RichTextUIKit.makeTextKit2View(attributed: attributed, metrics: metrics)
         context.coordinator.owner = owner
-        startImageLoading(textView)
+        let tap = RichTextHeldImageTap(textView: textView)
+        tap.onTap = { [weak textView] attachment in
+            guard let textView, let content = RichTextUIKit.currentContent(of: textView) else {
+                return
+            }
+            RichTextImageLoading.loadOnClick(attachment, in: content, reload: imageReloadTK2(textView))
+        }
+        context.coordinator.heldImageTap = tap
+        startImageLoading(textView, context.coordinator)
         return textView
     }
 
@@ -286,9 +343,11 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
         if RichTextUIKit.currentContent(of: textView)?.isEqual(to: attributed) == false {
             RichTextUIKit.setContent(attributed, on: textView)
             textView.invalidateIntrinsicContentSize()
-            startImageLoading(textView)
+            startImageLoading(textView, context.coordinator)
             context.coordinator.needsHighlightReapply = true
             context.coordinator.contentGeneration += 1
+        } else if context.coordinator.remoteImages != remoteImages {
+            startImageLoading(textView, context.coordinator)
         }
         applyHighlightsTK2(highlights, layoutManager: textView.textLayoutManager, coordinator: context.coordinator,
                            containerOrigin: { [weak textView] in
@@ -301,19 +360,12 @@ struct RichTextRepresentableTK2: UIViewRepresentable {
                            report: onCurrentMatchFrame)
     }
 
-    private func startImageLoading(_ textView: UITextView) {
+    private func startImageLoading(_ textView: UITextView, _ coordinator: TextKit2Coordinator) {
         guard let content = RichTextUIKit.currentContent(of: textView) else {
             return
         }
-        RichTextImageLoading.startLoading(in: content) { [weak textView] in
-            guard let textView, let content = RichTextUIKit.currentContent(of: textView),
-                  let layoutManager = textView.textLayoutManager else {
-                return
-            }
-            RichTextImageLoading.applyCached(in: content)
-            layoutManager.invalidateLayout(for: layoutManager.documentRange)
-            textView.invalidateIntrinsicContentSize()
-        }
+        coordinator.remoteImages = remoteImages
+        RichTextImageLoading.startLoading(in: content, remoteImages: remoteImages, reload: imageReloadTK2(textView))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
