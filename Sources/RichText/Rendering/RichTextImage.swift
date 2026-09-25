@@ -85,6 +85,10 @@ final class RichTextImageAttachment: NSTextAttachment {
         return true
     }
 
+    var hasFailed: Bool {
+        return failed
+    }
+
     func markFailed() {
         failed = true
         refresh()
@@ -256,8 +260,14 @@ public typealias RichTextImageResolver = (String) -> RichTextInlineImage?
 enum RichTextImageLoading {
     // Loading + caching (memory + disk, off-main decode) is delegated to AsyncImageCache.ImageStore. This
     // enum is the glue that maps text attachments to store load requests and re-applies loaded images to the
-    // live text storage. `inFlight` avoids spawning redundant load Tasks (the store also de-duplicates).
-    private static var inFlight = Set<URL>()
+    // live text storage.
+    //
+    // One fetch per URL at a time, and EVERY document that needs the URL meanwhile waits on that one fetch:
+    // `waiting` maps each URL being fetched to the documents to update when it ends. A document that found
+    // the fetch already running used to be skipped and never told, so when several views showed the same
+    // image at once (the same inline image in three documents, the same picture in two messages) only the
+    // first showed it; the rest kept their placeholder until SwiftUI happened to rebuild them.
+    private static var waiting: [URL: [(content: NSAttributedString, reload: @MainActor () -> Void)]] = [:]
 
     // The default on-screen display cap (points) for an inline image; also the attachment's default maxWidth.
     nonisolated static let defaultMaxWidth: CGFloat = 320
@@ -369,27 +379,48 @@ enum RichTextImageLoading {
 
     /// Whether a fetch of `url` is running (for tests).
     static func isFetching(_ url: URL) -> Bool {
-        return inFlight.contains(url)
+        return waiting[url] != nil
     }
 
-    // Fetch one attachment's image unless it is cached or already being fetched. maxWidth aligns the
-    // cache-check and the load variant key with the attachment's stored variant (see imageRequest).
+    // Fetch one attachment's image unless it is cached; if a fetch of the URL is already running, wait on it
+    // instead. When it ends, every waiting document gets the image (or, on failure, its not-yet-loaded
+    // attachments of that URL say so) and its view is reloaded. maxWidth aligns the cache-check and the load
+    // variant key with the attachment's stored variant (see imageRequest).
     private static func fetch(_ attachment: RichTextImageAttachment, url: URL, in content: NSAttributedString,
                               reload: @escaping @MainActor () -> Void) {
-        guard ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil,
-              !inFlight.contains(url) else {
+        guard ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil else {
             return
         }
+        if let documents = waiting[url] {
+            // One entry per document: a document using the image twice is updated once.
+            if !documents.contains(where: { $0.content === content }) {
+                waiting[url]?.append((content, reload))
+            }
+            return
+        }
+        waiting[url] = [(content, reload)]
         let maxWidth = attachment.maxWidth
-        inFlight.insert(url)
         Task {
             let image = await load(url, maxWidth: maxWidth)
-            inFlight.remove(url)
-            if image == nil {
+            let documents = waiting.removeValue(forKey: url) ?? []
+            for document in documents {
+                if image == nil {
+                    markFailed(url, in: document.content)
+                }
+                applyCached(in: document.content)
+                document.reload()
+            }
+        }
+    }
+
+    // After a failed fetch: every attachment of `url` in `content` still waiting for it says it is unavailable.
+    // Held attachments keep their "click to load" placeholder; they were never waiting.
+    private static func markFailed(_ url: URL, in content: NSAttributedString) {
+        content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
+            if let attachment = value as? RichTextImageAttachment, attachment.url == url,
+               attachment.loadedImage == nil, attachment.hold == .none {
                 attachment.markFailed()
             }
-            applyCached(in: content)
-            reload()
         }
     }
 

@@ -168,6 +168,80 @@ final class RichTextRemoteImagesTests: XCTestCase {
         XCTAssertFalse(RichTextImageLoading.isFetching(url), "under .never nothing is fetched, clicked or not")
     }
 
+    // MARK: - The same image in several documents at once
+
+    #if canImport(AppKit)
+    // A small PNG whose pixel color is random, as a data: URL, so no other test (and no earlier run's disk
+    // cache) has this image.
+    private func uniqueDataImageURL() -> URL {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2, bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.setColor(NSColor(red: .random(in: 0...1), green: .random(in: 0...1), blue: .random(in: 0...1), alpha: 1),
+                     atX: 0, y: 0)
+        let png = rep.representation(using: .png, properties: [:])!
+        return URL(string: "data:image/png;base64," + png.base64EncodedString())!
+    }
+
+    func testDocumentsSharingAnImageAllShowItWhenItArrives() async {
+        // The second document finds the fetch already running and does not start another; it must still be
+        // told when that fetch ends, or it keeps its placeholder until the view is rebuilt.
+        let url = uniqueDataImageURL()
+        let first = RichTextImageAttachment(alt: "first", url: url)
+        let second = RichTextImageAttachment(alt: "second", url: url)
+        var secondReloads = 0
+        RichTextImageLoading.startLoading(in: content([first]), remoteImages: .automatic) {}
+        RichTextImageLoading.startLoading(in: content([second]), remoteImages: .automatic) { secondReloads += 1 }
+        let deadline = Date().addingTimeInterval(5)
+        while (first.loadedImage == nil || second.loadedImage == nil) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertNotNil(first.loadedImage)
+        XCTAssertNotNil(second.loadedImage, "the document that waited on the running fetch shows the image too")
+        XCTAssertEqual(secondReloads, 1, "and its view was asked to redraw")
+        XCTAssertFalse(RichTextImageLoading.isFetching(url))
+    }
+
+    func testADocumentThatFindsTheImageCachedBeforeTheFetchEndsIsStillTold() async {
+        // The store caches the image off the main thread and only then tells the fetch, on the main thread. A
+        // document whose loading pass looks in between finds the image cached, after its own applyCached ran:
+        // it must still wait on the fetch, or nothing ever applies the image to it.
+        let url = uniqueDataImageURL()
+        let first = RichTextImageAttachment(alt: "first", url: url)
+        let second = RichTextImageAttachment(alt: "second", url: url)
+        RichTextImageLoading.startLoading(in: content([first]), remoteImages: .automatic) {}
+        let text = ImageArrivesMidPass(content([second])) {
+            let deadline = Date().addingTimeInterval(5)
+            while RichTextImageLoading.cachedImage(for: url) == nil && Date() < deadline {
+                usleep(1_000)
+            }
+        }
+        var secondReloads = 0
+        RichTextImageLoading.startLoading(in: text, remoteImages: .automatic) { secondReloads += 1 }
+        let deadline = Date().addingTimeInterval(5)
+        while (first.loadedImage == nil || second.loadedImage == nil) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertNotNil(first.loadedImage)
+        XCTAssertNotNil(second.loadedImage, "the document that found the image cached mid-fetch shows it too")
+        XCTAssertEqual(secondReloads, 1)
+    }
+    #endif
+
+    func testDocumentsSharingAFailedImageAllSayItIsUnavailable() async {
+        let url = remoteURL()
+        let first = RichTextImageAttachment(alt: "first", url: url)
+        let second = RichTextImageAttachment(alt: "second", url: url)
+        RichTextImageLoading.startLoading(in: content([first]), remoteImages: .automatic) {}
+        RichTextImageLoading.startLoading(in: content([second]), remoteImages: .automatic) {}
+        let deadline = Date().addingTimeInterval(20)
+        while (!first.hasFailed || !second.hasFailed) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(first.hasFailed)
+        XCTAssertTrue(second.hasFailed, "a document waiting on a fetch that fails says so, not \"loading\" forever")
+    }
+
     // MARK: - Placeholder
 
     func testTheHeldPlaceholderNamesTheHost() {
@@ -341,3 +415,45 @@ final class RichTextRemoteImagesTests: XCTestCase {
     }
     #endif
 }
+
+#if canImport(AppKit)
+// Content that runs `beforeSecondPass` when its attachments are enumerated the second time - in startLoading,
+// after its applyCached pass and before the pass that fetches - to hold the loading pass at that point.
+private final class ImageArrivesMidPass: NSAttributedString {
+    private let backing: NSAttributedString
+    private let beforeSecondPass: () -> Void
+    private var passes = 0
+
+    init(_ backing: NSAttributedString, beforeSecondPass: @escaping () -> Void) {
+        self.backing = backing
+        self.beforeSecondPass = beforeSecondPass
+        super.init()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    required init?(pasteboardPropertyList propertyList: Any, ofType type: NSPasteboard.PasteboardType) {
+        fatalError("init(pasteboardPropertyList:ofType:) has not been implemented")
+    }
+
+    override var string: String {
+        return backing.string
+    }
+
+    override func attributes(at location: Int, effectiveRange range: NSRangePointer?) -> [NSAttributedString.Key: Any] {
+        return backing.attributes(at: location, effectiveRange: range)
+    }
+
+    override func enumerateAttribute(_ attrName: NSAttributedString.Key, in enumerationRange: NSRange,
+                                     options opts: NSAttributedString.EnumerationOptions = [],
+                                     using block: (Any?, NSRange, UnsafeMutablePointer<ObjCBool>) -> Void) {
+        passes += 1
+        if passes == 2 {
+            beforeSecondPass()
+        }
+        super.enumerateAttribute(attrName, in: enumerationRange, options: opts, using: block)
+    }
+}
+#endif
