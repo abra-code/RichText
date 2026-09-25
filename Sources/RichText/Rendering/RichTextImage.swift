@@ -388,14 +388,17 @@ enum RichTextImageLoading {
     // variant key with the attachment's stored variant (see imageRequest).
     private static func fetch(_ attachment: RichTextImageAttachment, url: URL, in content: NSAttributedString,
                               reload: @escaping @MainActor () -> Void) {
-        guard ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil else {
-            return
-        }
+        // A running fetch is joined BEFORE the cache is checked: the store caches the image off the main
+        // thread and only then ends the fetch here, so a document that saw the image cached in between (after
+        // its own applyCached) and returned would never get it.
         if let documents = waiting[url] {
             // One entry per document: a document using the image twice is updated once.
             if !documents.contains(where: { $0.content === content }) {
                 waiting[url]?.append((content, reload))
             }
+            return
+        }
+        guard ImageStore.shared.cachedImage(for: imageRequest(for: url, maxWidth: attachment.maxWidth)) == nil else {
             return
         }
         waiting[url] = [(content, reload)]

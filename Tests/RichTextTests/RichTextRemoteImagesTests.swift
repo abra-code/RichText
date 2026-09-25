@@ -3,10 +3,11 @@
 // RichTextRemoteImages: under .onClick and .never a remote (http / https) image is held with a placeholder and
 // never fetched until the user clicks it (.onClick only); data: images load in every mode; .automatic fetches
 // at once, as before. Fetching is the thing that matters, so the assertions are about RichTextImageLoading's
-// in-flight set: a URL on it has been handed to the network.
+// running fetches (isFetching): a URL being fetched has been handed to the network. Documents that need an
+// image while its fetch runs wait on that fetch and are all told when it ends.
 //
 // Every remote URL is on the .invalid top-level domain, which never resolves, and is unique per test, so no
-// test can reach a real host and the process-wide cache and in-flight set cannot carry state between tests.
+// test can reach a real host and the process-wide cache and running fetches cannot carry state between tests.
 
 import XCTest
 @testable import RichText
@@ -177,8 +178,10 @@ final class RichTextRemoteImagesTests: XCTestCase {
         let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2, bitsPerSample: 8,
                                    samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
                                    bytesPerRow: 0, bitsPerPixel: 0)!
-        rep.setColor(NSColor(red: .random(in: 0...1), green: .random(in: 0...1), blue: .random(in: 0...1), alpha: 1),
-                     atX: 0, y: 0)
+        // A device color: setColor leaves the pixel clear for a color in another space (NSColor(red:...) is
+        // sRGB), and then every call returns the same image.
+        rep.setColor(NSColor(deviceRed: .random(in: 0...1), green: .random(in: 0...1), blue: .random(in: 0...1),
+                             alpha: 1), atX: 0, y: 0)
         let png = rep.representation(using: .png, properties: [:])!
         return URL(string: "data:image/png;base64," + png.base64EncodedString())!
     }
@@ -210,14 +213,21 @@ final class RichTextRemoteImagesTests: XCTestCase {
         let first = RichTextImageAttachment(alt: "first", url: url)
         let second = RichTextImageAttachment(alt: "second", url: url)
         RichTextImageLoading.startLoading(in: content([first]), remoteImages: .automatic) {}
+        // Let the fetch's Task hand the request to the store; the store cannot tell it the result until this
+        // test gives up the main thread again.
+        await Task.yield()
+        var cachedMidPass = false
         let text = ImageArrivesMidPass(content([second])) {
             let deadline = Date().addingTimeInterval(5)
             while RichTextImageLoading.cachedImage(for: url) == nil && Date() < deadline {
                 usleep(1_000)
             }
+            cachedMidPass = RichTextImageLoading.cachedImage(for: url) != nil
         }
         var secondReloads = 0
         RichTextImageLoading.startLoading(in: text, remoteImages: .automatic) { secondReloads += 1 }
+        XCTAssertTrue(cachedMidPass, "sanity: the image was cached while the loading pass was held")
+        XCTAssertTrue(RichTextImageLoading.isFetching(url), "sanity: and the fetch had not yet been told")
         let deadline = Date().addingTimeInterval(5)
         while (first.loadedImage == nil || second.loadedImage == nil) && Date() < deadline {
             try? await Task.sleep(nanoseconds: 20_000_000)
