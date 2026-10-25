@@ -497,61 +497,67 @@
         "children": [
           {
             "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "text",
-            "value": "under the inline cap"
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
+            "children": [
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "emphasis",
+                    "children": [
+                      {
+                        "type": "strong",
+                        "children": [
+                          {
+                            "type": "emphasis",
+                            "children": [
+                              {
+                                "type": "strong",
+                                "children": [
+                                  {
+                                    "type": "emphasis",
+                                    "children": [
+                                      {
+                                        "type": "strong",
+                                        "children": [
+                                          {
+                                            "type": "emphasis",
+                                            "children": [
+                                              {
+                                                "type": "strong",
+                                                "children": [
+                                                  {
+                                                    "type": "emphasis",
+                                                    "children": [
+                                                      {
+                                                        "type": "strong",
+                                                        "children": [
+                                                          {
+                                                            "type": "text",
+                                                            "value": "under the inline cap"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
           }
         ]
       }
@@ -574,125 +580,137 @@
         "children": [
           {
             "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
             "children": [
               {
-                "type": "emphasis",
+                "type": "strong",
                 "children": [
                   {
-                    "type": "text",
-                    "value": "beyond the inline cap"
+                    "type": "emphasis",
+                    "children": [
+                      {
+                        "type": "strong",
+                        "children": [
+                          {
+                            "type": "emphasis",
+                            "children": [
+                              {
+                                "type": "strong",
+                                "children": [
+                                  {
+                                    "type": "emphasis",
+                                    "children": [
+                                      {
+                                        "type": "strong",
+                                        "children": [
+                                          {
+                                            "type": "emphasis",
+                                            "children": [
+                                              {
+                                                "type": "strong",
+                                                "children": [
+                                                  {
+                                                    "type": "emphasis",
+                                                    "children": [
+                                                      {
+                                                        "type": "strong",
+                                                        "children": [
+                                                          {
+                                                            "type": "emphasis",
+                                                            "children": [
+                                                              {
+                                                                "type": "strong",
+                                                                "children": [
+                                                                  {
+                                                                    "type": "emphasis",
+                                                                    "children": [
+                                                                      {
+                                                                        "type": "strong",
+                                                                        "children": [
+                                                                          {
+                                                                            "type": "emphasis",
+                                                                            "children": [
+                                                                              {
+                                                                                "type": "strong",
+                                                                                "children": [
+                                                                                  {
+                                                                                    "type": "emphasis",
+                                                                                    "children": [
+                                                                                      {
+                                                                                        "type": "strong",
+                                                                                        "children": [
+                                                                                          {
+                                                                                            "type": "emphasis",
+                                                                                            "children": [
+                                                                                              {
+                                                                                                "type": "strong",
+                                                                                                "children": [
+                                                                                                  {
+                                                                                                    "type": "emphasis",
+                                                                                                    "children": [
+                                                                                                      {
+                                                                                                        "type": "strong",
+                                                                                                        "children": [
+                                                                                                          {
+                                                                                                            "type": "emphasis",
+                                                                                                            "children": [
+                                                                                                              {
+                                                                                                                "type": "emphasis",
+                                                                                                                "children": [
+                                                                                                                  {
+                                                                                                                    "type": "text",
+                                                                                                                    "value": "beyond the inline cap"
+                                                                                                                  }
+                                                                                                                ]
+                                                                                                              }
+                                                                                                            ]
+                                                                                                          }
+                                                                                                        ]
+                                                                                                      }
+                                                                                                    ]
+                                                                                                  }
+                                                                                                ]
+                                                                                              }
+                                                                                            ]
+                                                                                          }
+                                                                                        ]
+                                                                                      }
+                                                                                    ]
+                                                                                  }
+                                                                                ]
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               }
             ]
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
           }
         ]
       }
@@ -729,305 +747,8 @@
     "type": "paragraph",
     "inlines": [
       {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
-        "type": "strong",
-        "children": [
-          {
-            "type": "emphasis",
-            "children": []
-          }
-        ]
-      },
-      {
         "type": "text",
-        "value": "**text"
+        "value": "********************************************************************************************************************************************************************************************************text"
       }
     ]
   },

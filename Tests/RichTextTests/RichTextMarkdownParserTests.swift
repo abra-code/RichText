@@ -23,6 +23,86 @@ final class RichTextMarkdownParserTests: XCTestCase {
 
     func testUnterminatedSpanIsLiteral() {
         XCTAssertEqual(parse("a **bold and more"), [.paragraph([.text("a **bold and more")])])
+        XCTAssertEqual(parse("**unclosed bold and *italic"), [.paragraph([.text("**unclosed bold and *italic")])])
+    }
+
+    // MARK: - CommonMark flanking (as Apple's AttributedString(markdown:) parses them)
+
+    func testUnderscoresInsideAWordStayLiteral() {
+        XCTAssertEqual(parse("snake_case_word and __init__"), [.paragraph([.text("snake_case_word and "), .strong([.text("init")])])])
+        XCTAssertEqual(parse("_a_b"), [.paragraph([.text("_a_b")])])
+        XCTAssertEqual(parse("a _word_ here"), [.paragraph([.text("a "), .emphasis([.text("word")]), .text(" here")])])
+    }
+
+    func testStarsBetweenSpacesStayLiteral() {
+        XCTAssertEqual(parse("2 * 3 * 4"), [.paragraph([.text("2 * 3 * 4")])])
+        XCTAssertEqual(parse("a*b*c"), [.paragraph([.text("a"), .emphasis([.text("b")]), .text("c")])])
+    }
+
+    func testStrongNestsInsideEmphasis() {
+        XCTAssertEqual(parse("*a **b** c*"),
+                       [.paragraph([.emphasis([.text("a "), .strong([.text("b")]), .text(" c")])])])
+    }
+
+    func testAnUnclosedOpenerLeavesLaterEmphasisAlone() {
+        XCTAssertEqual(parse("*a *b* c"), [.paragraph([.text("*a "), .emphasis([.text("b")]), .text(" c")])])
+        XCTAssertEqual(parse("Call f(*args) for *each* item"),
+                       [.paragraph([.text("Call f(*args) for "), .emphasis([.text("each")]), .text(" item")])])
+        XCTAssertEqual(parse("*a **b*"), [.paragraph([.text("*a *"), .emphasis([.text("b")])])])
+        XCTAssertEqual(parse("**a and **b** c"), [.paragraph([.text("**a and "), .strong([.text("b")]), .text(" c")])])
+        XCTAssertEqual(parse("_a _b_ c"), [.paragraph([.text("_a "), .emphasis([.text("b")]), .text(" c")])])
+    }
+
+    func testASpanOpenedInLinkTextClosesThere() {
+        XCTAssertEqual(parse("[*a](https://u.com) and *b*"),
+                       [.paragraph([.link(text: [.text("*a")], url: "https://u.com"), .text(" and "), .emphasis([.text("b")])])])
+        XCTAssertEqual(parse("[*a](https://u.com) b*"),
+                       [.paragraph([.link(text: [.text("*a")], url: "https://u.com"), .text(" b*")])])
+    }
+
+    func testUnclosedOpenersInManyLinksParseFast() {
+        // Each link's unclosed '*' once searched the rest of the text, nesting into every later link:
+        // 250 repetitions took 14 s.
+        let input = String(repeating: "[*a](https://u.com) *b* ", count: 2_000)
+        let start = Date()
+        let blocks = parse(input)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5.0)
+        guard case .paragraph(let nodes)? = blocks.first else {
+            return XCTFail("expected a paragraph")
+        }
+        XCTAssertEqual(nodes.filter { if case .emphasis = $0 { return true } else { return false } }.count, 2_000)
+    }
+
+    func testALongRunOfUnclosedMarkersStaysLiteralAndFast() {
+        let run = String(repeating: "*", count: 200) + "text " + String(repeating: "_", count: 200)
+        XCTAssertEqual(parse(run), [.paragraph([.text(run)])])
+    }
+
+    // MARK: - Autolinks, entities, destinations
+
+    func testAngleAutolinks() {
+        XCTAssertEqual(parse("<https://example.com/path>"),
+                       [.paragraph([.link(text: [.text("https://example.com/path")], url: "https://example.com/path")])])
+        XCTAssertEqual(parse("<someone@example.com>"),
+                       [.paragraph([.link(text: [.text("someone@example.com")], url: "mailto:someone@example.com")])])
+        XCTAssertEqual(parse("a <b> c"), [.paragraph([.text("a <b> c")])], "HTML stays literal")
+    }
+
+    func testEntitiesDecode() {
+        XCTAssertEqual(parse("AT&amp;T &copy; &#169; &#x2014; &unknown;"),
+                       [.paragraph([.text("AT&T \u{A9} \u{A9} \u{2014} &unknown;")])])
+        XCTAssertEqual(parse("`&amp;`"), [.paragraph([.code("&amp;")])], "not in code")
+        XCTAssertEqual(parse("&#+12; &#x+1F;"), [.paragraph([.text("&#+12; &#x+1F;")])], "digits only, no sign")
+    }
+
+    func testLinkTitlesAndAngleDestinations() {
+        XCTAssertEqual(parse("[a](https://e.com \"Title\")"), [.paragraph([.link(text: [.text("a")], url: "https://e.com")])])
+        XCTAssertEqual(parse("[a](https://e.com 'Title')"), [.paragraph([.link(text: [.text("a")], url: "https://e.com")])])
+        XCTAssertEqual(parse("[b](<https://e.com/a b>)"), [.paragraph([.link(text: [.text("b")], url: "https://e.com/a%20b")])])
+    }
+
+    func testAnEmptyDestinationShowsItsText() {
+        XCTAssertEqual(parse("[text]() here"), [.paragraph([.text("text"), .text(" here")])])
     }
 
     func testFencedCode() {
@@ -213,6 +293,20 @@ final class RichTextMarkdownParserTests: XCTestCase {
         let text = nodes.plainText
         XCTAssertEqual(text.filter { $0 == "[" }.count, 50_000)
         XCTAssertTrue(text.hasSuffix("x"))
+    }
+
+    func testALongMarkerRunParsesFastWithoutTextLoss() {
+        // Measuring the run anew at each of its positions made 20,000 '*' take 11 s.
+        for marker in ["*", "_"] {
+            let input = String(repeating: marker, count: 20_000) + "x"
+            let start = Date()
+            let blocks = parse(input)
+            XCTAssertLessThan(Date().timeIntervalSince(start), 5.0, "a long \(marker) run should parse in linear time")
+            guard case .paragraph(let nodes)? = blocks.first else {
+                return XCTFail("expected a paragraph")
+            }
+            XCTAssertEqual(nodes.plainText, input, "no characters may be lost")
+        }
     }
 
     func testNestedLinkAndEmphasisStillParse() {

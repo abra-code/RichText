@@ -4,7 +4,10 @@
 // line-based block parser plus a recursive inline parser covering the subset a chat / document surface
 // uses: ATX headings, paragraphs, fenced code, block quotes, ordered / unordered / nested lists,
 // thematic breaks, GFM tables; inline **strong**, *emphasis*, ***both***, ~~strike~~, `code`,
-// [links](url), escapes, hard breaks.
+// [links](url), <autolinks>, escapes, entities, hard breaks.
+//
+// Emphasis follows CommonMark's flanking rules, so a * or _ opens or closes only where CommonMark's
+// would: snake_case_word and 2 * 3 * 4 stay literal, as they do in Apple's AttributedString(markdown:).
 //
 // The parser is TOTAL: malformed or INCOMPLETE input never throws and never loses text (an unterminated
 // `**bold` renders as literal "**bold" until it closes). That property is what makes STREAMING safe.
@@ -480,6 +483,18 @@ private struct RichTextInlineParser {
     // Recursion-depth cap for the structural helpers. Real inline nesting never approaches this; past it
     // markup characters are emitted literally so a crafted deep/unbalanced nest cannot blow the stack.
     private static let maxDepth = 32
+    // Where an opener of each marker run ("*", "**", "_", "~~"...) first searched to the end of its scope
+    // (the text, or the link text it is in) without finding its closer: a later opener of the same run
+    // in that scope finds none either, so it stays literal at once. Without it, openers that cannot
+    // close each other (a long run of "*" or "_") nest attempts inside attempts and the parse takes
+    // exponential time. parseLink gives the link text a scope of its own.
+    private var unclosedFrom: [String: Int] = [:]
+    // Openers that found their closer: the failed search of an earlier opener ran past them, so they lie
+    // after its unclosedFrom entry, yet their own search succeeds ("*a *b* c": *b* still emphasizes).
+    private var closedAt: Set<Int> = []
+    // The marker run measured last: each position in a long run asks for the same run, and measuring it
+    // anew every time made a run of n markers take n * n steps.
+    private var lastRun: (start: Int, end: Int) = (0, 0)
 
     private init(_ text: String, _ references: [String: String]) {
         let characters = Array(text)
@@ -494,7 +509,8 @@ private struct RichTextInlineParser {
         return RichTextAutolinker.link(parser.parseRuns(stop: nil, depth: 0).nodes)
     }
 
-    private mutating func parseRuns(stop: String?, depth: Int) -> (nodes: [RichTextInline], matched: Bool) {
+    // `inLink`: the runs are inside link text, where a span opened there must also close there.
+    private mutating func parseRuns(stop: String?, depth: Int, inLink: Bool = false) -> (nodes: [RichTextInline], matched: Bool) {
         var nodes: [RichTextInline] = []
         var buffer = ""
         // Past the cap, stop treating markup as structural: emit it literally (advance by one). No text is
@@ -509,10 +525,16 @@ private struct RichTextInlineParser {
         }
 
         while pos < chars.count {
-            if let stop, matches(stop, at: pos) {
+            if let stop, matches(stop, at: pos), isCloser(stop, at: pos) {
                 pos += stop.count
                 flush()
                 return (nodes, true)
+            }
+            // The ']' ending the link text ends a span opened inside it unclosed, as in CommonMark:
+            // "[*a](u) b*" is a link "*a", not emphasis reaching out of the brackets.
+            if inLink, chars[pos] == "]" {
+                flush()
+                return (nodes, false)
             }
 
             let c = chars[pos]
@@ -538,7 +560,7 @@ private struct RichTextInlineParser {
                     pos += 1
                 }
             case "*", "_", "~":
-                if allowStructural, let node = parseEmphasis(c, depth: depth) {
+                if allowStructural, let node = parseEmphasis(c, depth: depth, inLink: inLink) {
                     flush()
                     nodes.append(node)
                 } else {
@@ -554,9 +576,24 @@ private struct RichTextInlineParser {
                     pos += 1
                 }
             case "[":
-                if allowStructural, let node = parseLink(depth: depth) {
+                if allowStructural, let link = parseLink(depth: depth) {
+                    flush()
+                    nodes.append(contentsOf: link)
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
+            case "<":
+                if allowStructural, let node = parseAngleAutolink() {
                     flush()
                     nodes.append(node)
+                } else {
+                    buffer.append(c)
+                    pos += 1
+                }
+            case "&":
+                if let decoded = parseEntity() {
+                    buffer.append(decoded)
                 } else {
                     buffer.append(c)
                     pos += 1
@@ -583,7 +620,197 @@ private struct RichTextInlineParser {
     }
 
     private func isEscapable(_ c: Character) -> Bool {
-        return "\\`*_{}[]()#+-.!~>|\"".contains(c)
+        return "\\`*_{}[]()#+-.!~>|\"<&".contains(c)
+    }
+
+    // MARK: Flanking (CommonMark 0.29, "left-flanking delimiter run")
+
+    // Whitespace for flanking: the start and end of the text count as whitespace, as do line breaks.
+    private static func isFlankingWhitespace(_ c: Character?) -> Bool {
+        guard let c else { return true }
+        return c.isWhitespace
+    }
+
+    // ASCII punctuation, or a Unicode punctuation character.
+    private static func isFlankingPunctuation(_ c: Character?) -> Bool {
+        guard let c else { return false }
+        return "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".contains(c) || c.isPunctuation
+    }
+
+    private func character(at index: Int) -> Character? {
+        return index >= 0 && index < chars.count ? chars[index] : nil
+    }
+
+    // The whole run of `marker` around `index`, so a run is judged as one, as CommonMark does.
+    private mutating func run(of marker: Character, around index: Int) -> (start: Int, end: Int) {
+        if index >= lastRun.start, index < lastRun.end, chars[index] == marker {
+            return lastRun
+        }
+        var start = index
+        while start > 0, chars[start - 1] == marker {
+            start -= 1
+        }
+        var end = index
+        while end < chars.count, chars[end] == marker {
+            end += 1
+        }
+        lastRun = (start, end)
+        return lastRun
+    }
+
+    private func flanking(_ run: (start: Int, end: Int)) -> (left: Bool, right: Bool, before: Character?, after: Character?) {
+        let before = character(at: run.start - 1)
+        let after = character(at: run.end)
+        let left = !Self.isFlankingWhitespace(after)
+            && (!Self.isFlankingPunctuation(after) || Self.isFlankingWhitespace(before) || Self.isFlankingPunctuation(before))
+        let right = !Self.isFlankingWhitespace(before)
+            && (!Self.isFlankingPunctuation(before) || Self.isFlankingWhitespace(after) || Self.isFlankingPunctuation(after))
+        return (left, right, before, after)
+    }
+
+    // Whether the run of `marker` at `index` can open emphasis: `*` when left-flanking; `_` also not
+    // inside a word (snake_case_word).
+    private mutating func canOpen(_ marker: Character, at index: Int) -> Bool {
+        let f = flanking(run(of: marker, around: index))
+        return marker == "_" ? f.left && (!f.right || Self.isFlankingPunctuation(f.before)) : f.left
+    }
+
+    // Whether the run of `marker` at `index` can close emphasis: `*` when right-flanking; `_` also not
+    // inside a word.
+    private mutating func canClose(_ marker: Character, at index: Int) -> Bool {
+        let f = flanking(run(of: marker, around: index))
+        return marker == "_" ? f.right && (!f.left || Self.isFlankingPunctuation(f.after)) : f.right
+    }
+
+    // A stop closes the runs it ends: an emphasis stop only where its run can close.
+    private mutating func isCloser(_ stop: String, at index: Int) -> Bool {
+        guard let marker = stop.first, marker == "*" || marker == "_" else {
+            return true
+        }
+        return canClose(marker, at: index)
+    }
+
+    // MARK: Entities
+
+    // The named entities decoded: the common ones. Others stay literal.
+    private static let namedEntities: [String: Character] = [
+        "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": "\u{00A0}",
+        "copy": "\u{00A9}", "reg": "\u{00AE}", "trade": "\u{2122}", "hellip": "\u{2026}",
+        "mdash": "\u{2014}", "ndash": "\u{2013}", "lsquo": "\u{2018}", "rsquo": "\u{2019}",
+        "ldquo": "\u{201C}", "rdquo": "\u{201D}", "laquo": "\u{00AB}", "raquo": "\u{00BB}",
+        "bull": "\u{2022}", "middot": "\u{00B7}", "deg": "\u{00B0}", "plusmn": "\u{00B1}",
+        "times": "\u{00D7}", "divide": "\u{00F7}", "euro": "\u{20AC}", "pound": "\u{00A3}",
+        "yen": "\u{00A5}", "cent": "\u{00A2}", "sect": "\u{00A7}", "para": "\u{00B6}",
+        "larr": "\u{2190}", "rarr": "\u{2192}", "uarr": "\u{2191}", "darr": "\u{2193}",
+        "harr": "\u{2194}", "ne": "\u{2260}", "le": "\u{2264}", "ge": "\u{2265}",
+    ]
+
+    // &name; (a common named entity), &#123; or &#x1F600; at pos: its character, pos past it; nil when
+    // there is none (the & is literal).
+    private mutating func parseEntity() -> Character? {
+        var j = pos + 1
+        var body = ""
+        while j < chars.count, chars[j] != ";", body.count < 32 {
+            body.append(chars[j])
+            j += 1
+        }
+        guard j < chars.count, chars[j] == ";", !body.isEmpty else {
+            return nil
+        }
+        var decoded: Character?
+        if body.hasPrefix("#") {
+            let digits = body.dropFirst()
+            let hex = digits.first == "x" || digits.first == "X"
+            let number = hex ? digits.dropFirst() : digits
+            let maxDigits = hex ? 6 : 7
+            // ASCII digits only: UInt32(_:radix:) would also take a sign ("&#+12;").
+            let isDigit: (Character) -> Bool = { $0.isASCII && (hex ? $0.isHexDigit : $0.isNumber) }
+            if !number.isEmpty, number.count <= maxDigits, number.allSatisfy(isDigit),
+               let value = UInt32(number, radix: hex ? 16 : 10) {
+                let scalar = value == 0 ? nil : Unicode.Scalar(value)
+                decoded = Character(scalar ?? "\u{FFFD}")
+            }
+        } else if body.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) {
+            decoded = Self.namedEntities[body]
+        }
+        guard let decoded else {
+            return nil
+        }
+        pos = j + 1
+        return decoded
+    }
+
+    // MARK: Autolinks
+
+    // <scheme:...> or <user@host> at pos: a link showing the address (mailto: for an email); nil when
+    // the brackets hold neither (HTML, "a < b > c").
+    private mutating func parseAngleAutolink() -> RichTextInline? {
+        var j = pos + 1
+        var content = ""
+        while j < chars.count, chars[j] != ">" {
+            let c = chars[j]
+            if c == "<" || c.isWhitespace {
+                return nil
+            }
+            content.append(c)
+            j += 1
+        }
+        guard j < chars.count, !content.isEmpty else {
+            return nil
+        }
+        let url: String
+        if Self.isAutolinkURI(content) {
+            url = content
+        } else if Self.isAutolinkEmail(content) {
+            url = "mailto:" + content
+        } else {
+            return nil
+        }
+        pos = j + 1
+        return .link(text: [.text(content)], url: url)
+    }
+
+    // A scheme of 2 to 32 letters, digits, + . or - (starting with a letter), a colon, and the rest.
+    private static func isAutolinkURI(_ s: String) -> Bool {
+        guard let colon = s.firstIndex(of: ":") else {
+            return false
+        }
+        let scheme = s[s.startIndex..<colon]
+        guard (2...32).contains(scheme.count), let first = scheme.first, first.isASCII, first.isLetter else {
+            return false
+        }
+        return scheme.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "+" || $0 == "." || $0 == "-") }
+    }
+
+    // user@host.domain: the local part of letters, digits and .!#$%&'*+/=?^_`{|}~-, the host of labels
+    // of letters, digits and hyphens.
+    private static func isAutolinkEmail(_ s: String) -> Bool {
+        let parts = s.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+            return false
+        }
+        let localAllowed = ".!#$%&'*+/=?^_`{|}~-"
+        guard parts[0].allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || localAllowed.contains($0)) }) else {
+            return false
+        }
+        let labels = parts[1].split(separator: ".", omittingEmptySubsequences: false)
+        return labels.allSatisfy { label in
+            !label.isEmpty && label.count <= 63 && label.first != "-" && label.last != "-"
+                && label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+        }
+    }
+
+    // MARK: Link destinations
+
+    // The destination inside (...): <with spaces> (spaces as %20, as Apple's parser gives them), else
+    // up to the first whitespace; a title after it ("Title", 'Title', (Title)) is left out.
+    private static func linkDestination(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("<"), let close = trimmed.firstIndex(of: ">") {
+            let inner = trimmed[trimmed.index(after: trimmed.startIndex)..<close]
+            return inner.replacingOccurrences(of: " ", with: "%20")
+        }
+        return String(trimmed.prefix(while: { !$0.isWhitespace }))
     }
 
     // ![alt](url) - the alt text is taken literally (image alt is plain text).
@@ -623,7 +850,7 @@ private struct RichTextInlineParser {
                 depth -= 1
                 if depth == 0 {
                     pos += 1
-                    return .image(alt: alt, url: url.trimmingCharacters(in: .whitespaces))
+                    return .image(alt: alt, url: Self.linkDestination(url))
                 }
                 url.append(c)
                 pos += 1
@@ -673,21 +900,36 @@ private struct RichTextInlineParser {
         return s
     }
 
-    private mutating func parseEmphasis(_ marker: Character, depth: Int) -> RichTextInline? {
-        let start = pos
-        var run = 0
-        while pos < chars.count, chars[pos] == marker {
-            run += 1
-            pos += 1
+    // Whether an opener at `start` that searches for `closer` is already known to find none.
+    private func knownUnclosed(_ closer: String, at start: Int) -> Bool {
+        return start >= unclosedFrom[closer, default: Int.max] && !closedAt.contains(start)
+    }
+
+    // Records the outcome of the search for `closer` from the opener at `start`. A success is kept only
+    // where the search parsed structure (below the depth cap), so a cap artifact is not trusted later.
+    private mutating func record(_ closer: String, at start: Int, matched: Bool, depth: Int) {
+        if matched {
+            if depth + 1 <= Self.maxDepth {
+                closedAt.insert(start)
+            }
+        } else {
+            closedAt.remove(start)
+            unclosedFrom[closer] = min(unclosedFrom[closer, default: Int.max], start)
         }
+    }
+
+    private mutating func parseEmphasis(_ marker: Character, depth: Int, inLink: Bool) -> RichTextInline? {
+        let start = pos
+        let run = run(of: marker, around: start).end - start
 
         if marker == "~" {
-            if run < 2 {
+            if run < 2 || knownUnclosed("~~", at: start) {
                 pos = start
                 return nil
             }
             pos = start + 2
-            let inner = parseRuns(stop: "~~", depth: depth + 1)
+            let inner = parseRuns(stop: "~~", depth: depth + 1, inLink: inLink)
+            record("~~", at: start, matched: inner.matched, depth: depth)
             if inner.matched {
                 return .strikethrough(inner.nodes)
             }
@@ -695,10 +937,20 @@ private struct RichTextInlineParser {
             return nil
         }
 
+        // A run that cannot open (snake_case_word, 2 * 3 * 4) stays literal.
+        if !canOpen(marker, at: start) {
+            pos = start
+            return nil
+        }
         let level = min(run, 3)
         let closer = String(repeating: marker, count: level)
+        if knownUnclosed(closer, at: start) {
+            pos = start
+            return nil
+        }
         pos = start + level
-        let inner = parseRuns(stop: closer, depth: depth + 1)
+        let inner = parseRuns(stop: closer, depth: depth + 1, inLink: inLink)
+        record(closer, at: start, matched: inner.matched, depth: depth)
         if inner.matched {
             switch level {
             case 1:
@@ -713,7 +965,9 @@ private struct RichTextInlineParser {
         return nil
     }
 
-    private mutating func parseLink(depth: Int) -> RichTextInline? {
+    // [text](url), [text][ref], [text][] or [ref] at pos: the link; or, for an empty destination
+    // ([text]()), its text alone, as Apple's parser shows it. nil when it is no link.
+    private mutating func parseLink(depth: Int) -> [RichTextInline]? {
         let start = pos
         pos += 1                              // consume '['
         if pos > lastCloseBracket {           // no ']' ahead: not a link in any form - bail in O(1)
@@ -721,7 +975,11 @@ private struct RichTextInlineParser {
             return nil
         }
         let labelStart = pos
-        let text = parseRuns(stop: "]", depth: depth + 1)
+        // The link text is a scope of its own for unclosedFrom: a span opened in it ends at its ']'.
+        let outerUnclosed = unclosedFrom
+        unclosedFrom = [:]
+        let text = parseRuns(stop: "]", depth: depth + 1, inLink: true)
+        unclosedFrom = outerUnclosed
         guard text.matched else {
             pos = start
             return nil
@@ -747,7 +1005,8 @@ private struct RichTextInlineParser {
                     parenDepth -= 1
                     if parenDepth == 0 {
                         pos += 1
-                        return .link(text: text.nodes, url: url.trimmingCharacters(in: .whitespaces))
+                        let destination = Self.linkDestination(url)
+                        return destination.isEmpty ? text.nodes : [.link(text: text.nodes, url: destination)]
                     }
                     url.append(c)
                     pos += 1
@@ -771,7 +1030,7 @@ private struct RichTextInlineParser {
                 let key = (refLabel.isEmpty ? labelString : refLabel).lowercased()
                 if let url = references[key] {
                     pos = j + 1
-                    return .link(text: text.nodes, url: url)
+                    return [.link(text: text.nodes, url: url)]
                 }
             }
             pos = start
@@ -781,7 +1040,7 @@ private struct RichTextInlineParser {
         // Shortcut reference: [ref] - only a link when 'ref' is a defined label (else falls through to
         // literal, so documents without reference definitions are unaffected).
         if let url = references[labelString.lowercased()] {
-            return .link(text: text.nodes, url: url)
+            return [.link(text: text.nodes, url: url)]
         }
 
         pos = start

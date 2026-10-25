@@ -10,7 +10,10 @@ import com.abracode.richtext.trimMarkdownWhitespace
 // A small, dependency-free Markdown parser. A line-based block parser plus a recursive inline parser covering
 // the subset a chat / document surface uses: ATX headings, paragraphs, fenced code, block quotes, ordered /
 // unordered / nested lists, thematic breaks, GFM tables; inline **strong**, *emphasis*, ***both***, ~~strike~~,
-// `code`, [links](url), escapes, hard breaks.
+// `code`, [links](url), <autolinks>, escapes, entities, hard breaks.
+//
+// Emphasis follows CommonMark's flanking rules, so a * or _ opens or closes only where CommonMark's would:
+// snake_case_word and 2 * 3 * 4 stay literal, as they do in Apple's AttributedString(markdown:).
 //
 // The parser is TOTAL: malformed or INCOMPLETE input never throws and never loses text (an unterminated
 // `**bold` renders as literal "**bold" until it closes). That property is what makes STREAMING safe. A 1:1
@@ -481,6 +484,19 @@ private class RichTextInlineParser private constructor(text: String, private val
     private val lastCloseBracket: Int = chars.lastIndexOf(']')
     private val lastCloseParen: Int = chars.lastIndexOf(')')
 
+    // Where an opener of each marker run ("*", "**", "_", "~~"...) first searched to the end of its scope (the
+    // text, or the link text it is in) without finding its closer: a later opener of the same run in that scope
+    // finds none either, so it stays literal at once. Without it, openers that cannot close each other (a long
+    // run of "*" or "_") nest attempts inside attempts and the parse takes exponential time. parseLink gives the
+    // link text a scope of its own.
+    private var unclosedFrom = mutableMapOf<String, Int>()
+    // Openers that found their closer: the failed search of an earlier opener ran past them, so they lie after
+    // its unclosedFrom entry, yet their own search succeeds ("*a *b* c": *b* still emphasizes).
+    private val closedAt = HashSet<Int>()
+    // The marker run measured last: each position in a long run asks for the same run, and measuring it anew every
+    // time made a run of n markers take n * n steps.
+    private var lastRun: IntRange = IntRange.EMPTY
+
     private class Runs(val nodes: List<RichTextInline>, val matched: Boolean)
 
     companion object {
@@ -488,8 +504,77 @@ private class RichTextInlineParser private constructor(text: String, private val
         // markup characters are emitted literally so a crafted deep/unbalanced nest cannot blow the stack.
         private const val MAX_DEPTH = 32
 
-        // The characters a backslash may escape (Swift: "\\`*_{}[]()#+-.!~>|\"").
-        private const val ESCAPABLE = "\\`*_{}[]()#+-.!~>|\""
+        // The characters a backslash may escape (Swift: "\\`*_{}[]()#+-.!~>|\"<&").
+        private const val ESCAPABLE = "\\`*_{}[]()#+-.!~>|\"<&"
+
+        // ASCII punctuation for the flanking rules (with Unicode punctuation, isFlankingPunctuation).
+        private const val ASCII_PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+
+        // The named entities decoded: the common ones. Others stay literal.
+        private val NAMED_ENTITIES: Map<String, String> = mapOf(
+            "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to "\u00A0",
+            "copy" to "\u00A9", "reg" to "\u00AE", "trade" to "\u2122", "hellip" to "\u2026",
+            "mdash" to "\u2014", "ndash" to "\u2013", "lsquo" to "\u2018", "rsquo" to "\u2019",
+            "ldquo" to "\u201C", "rdquo" to "\u201D", "laquo" to "\u00AB", "raquo" to "\u00BB",
+            "bull" to "\u2022", "middot" to "\u00B7", "deg" to "\u00B0", "plusmn" to "\u00B1",
+            "times" to "\u00D7", "divide" to "\u00F7", "euro" to "\u20AC", "pound" to "\u00A3",
+            "yen" to "\u00A5", "cent" to "\u00A2", "sect" to "\u00A7", "para" to "\u00B6",
+            "larr" to "\u2190", "rarr" to "\u2192", "uarr" to "\u2191", "darr" to "\u2193",
+            "harr" to "\u2194", "ne" to "\u2260", "le" to "\u2264", "ge" to "\u2265",
+        )
+
+        // Whitespace for flanking: the start and end of the text count as whitespace, as do line breaks.
+        private fun isFlankingWhitespace(c: Char?): Boolean = c == null || c.isWhitespace()
+
+        // ASCII punctuation, or a Unicode punctuation character (general category P*).
+        private fun isFlankingPunctuation(c: Char?): Boolean {
+            if (c == null) return false
+            if (c in ASCII_PUNCTUATION) return true
+            return when (Character.getType(c).toByte()) {
+                Character.CONNECTOR_PUNCTUATION, Character.DASH_PUNCTUATION, Character.START_PUNCTUATION,
+                Character.END_PUNCTUATION, Character.INITIAL_QUOTE_PUNCTUATION, Character.FINAL_QUOTE_PUNCTUATION,
+                Character.OTHER_PUNCTUATION -> true
+                else -> false
+            }
+        }
+
+        private fun Char.isAsciiLetter(): Boolean = this in 'a'..'z' || this in 'A'..'Z'
+        private fun Char.isAsciiLetterOrDigit(): Boolean = isAsciiLetter() || this in '0'..'9'
+
+        // A scheme of 2 to 32 letters, digits, + . or - (starting with a letter), a colon, and the rest.
+        private fun isAutolinkURI(s: String): Boolean {
+            val colon = s.indexOf(':')
+            if (colon < 0) return false
+            val scheme = s.substring(0, colon)
+            if (scheme.length !in 2..32 || !scheme[0].isAsciiLetter()) return false
+            return scheme.all { it.isAsciiLetterOrDigit() || it == '+' || it == '.' || it == '-' }
+        }
+
+        // user@host.domain: the local part of letters, digits and .!#$%&'*+/=?^_`{|}~-, the host of labels of
+        // letters, digits and hyphens.
+        private fun isAutolinkEmail(s: String): Boolean {
+            val parts = s.split("@")
+            if (parts.size != 2 || parts[0].isEmpty() || parts[1].isEmpty()) return false
+            val localAllowed = ".!#$%&'*+/=?^_`{|}~-"
+            if (!parts[0].all { it.isAsciiLetterOrDigit() || it in localAllowed }) return false
+            return parts[1].split(".").all { label ->
+                label.isNotEmpty() && label.length <= 63 && label.first() != '-' && label.last() != '-' &&
+                    label.all { it.isAsciiLetterOrDigit() || it == '-' }
+            }
+        }
+
+        // The destination inside (...): <with spaces> (spaces as %20, as Apple's parser gives them), else up to
+        // the first whitespace; a title after it ("Title", 'Title', (Title)) is left out.
+        private fun linkDestination(raw: String): String {
+            val trimmed = raw.trimMarkdownWhitespace()
+            if (trimmed.startsWith("<")) {
+                val close = trimmed.indexOf('>')
+                if (close >= 0) {
+                    return trimmed.substring(1, close).replace(" ", "%20")
+                }
+            }
+            return trimmed.takeWhile { !it.isWhitespace() }
+        }
 
         fun parse(text: String, references: Map<String, String> = emptyMap()): List<RichTextInline> {
             val parser = RichTextInlineParser(text, references)
@@ -497,7 +582,8 @@ private class RichTextInlineParser private constructor(text: String, private val
         }
     }
 
-    private fun parseRuns(stop: String?, depth: Int): Runs {
+    // `inLink`: the runs are inside link text, where a span opened there must also close there.
+    private fun parseRuns(stop: String?, depth: Int, inLink: Boolean = false): Runs {
         val nodes = mutableListOf<RichTextInline>()
         val buffer = StringBuilder()
         // Past the cap, stop treating markup as structural: emit it literally (advance by one). No text is lost -
@@ -512,10 +598,16 @@ private class RichTextInlineParser private constructor(text: String, private val
         }
 
         while (pos < chars.size) {
-            if (stop != null && matches(stop, pos)) {
+            if (stop != null && matches(stop, pos) && isCloser(stop, pos)) {
                 pos += stop.length
                 flush()
                 return Runs(nodes, true)
+            }
+            // The ']' ending the link text ends a span opened inside it unclosed, as in CommonMark: "[*a](u) b*"
+            // is a link "*a", not emphasis reaching out of the brackets.
+            if (inLink && chars[pos] == ']') {
+                flush()
+                return Runs(nodes, false)
             }
 
             when (val c = chars[pos]) {
@@ -544,7 +636,7 @@ private class RichTextInlineParser private constructor(text: String, private val
                     }
                 }
                 '*', '_', '~' -> {
-                    val node = if (allowStructural) parseEmphasis(c, depth) else null
+                    val node = if (allowStructural) parseEmphasis(c, depth, inLink) else null
                     if (node != null) {
                         flush()
                         nodes.add(node)
@@ -564,10 +656,29 @@ private class RichTextInlineParser private constructor(text: String, private val
                     }
                 }
                 '[' -> {
-                    val node = if (allowStructural) parseLink(depth) else null
+                    val link = if (allowStructural) parseLink(depth) else null
+                    if (link != null) {
+                        flush()
+                        nodes.addAll(link)
+                    } else {
+                        buffer.append(c)
+                        pos += 1
+                    }
+                }
+                '<' -> {
+                    val node = if (allowStructural) parseAngleAutolink() else null
                     if (node != null) {
                         flush()
                         nodes.add(node)
+                    } else {
+                        buffer.append(c)
+                        pos += 1
+                    }
+                }
+                '&' -> {
+                    val decoded = parseEntity()
+                    if (decoded != null) {
+                        buffer.append(decoded)
                     } else {
                         buffer.append(c)
                         pos += 1
@@ -593,6 +704,113 @@ private class RichTextInlineParser private constructor(text: String, private val
     }
 
     private fun isEscapable(c: Char): Boolean = c in ESCAPABLE
+
+    // MARK: Flanking (CommonMark 0.29, "left-flanking delimiter run")
+
+    private fun charAt(index: Int): Char? = if (index >= 0 && index < chars.size) chars[index] else null
+
+    // The whole run of `marker` around `index`, so a run is judged as one, as CommonMark does.
+    private fun runAround(marker: Char, index: Int): IntRange {
+        if (index in lastRun && chars[index] == marker) return lastRun
+        var start = index
+        while (start > 0 && chars[start - 1] == marker) start -= 1
+        var end = index
+        while (end < chars.size && chars[end] == marker) end += 1
+        lastRun = start until end
+        return lastRun
+    }
+
+    private class Flanking(val left: Boolean, val right: Boolean, val before: Char?, val after: Char?)
+
+    private fun flanking(run: IntRange): Flanking {
+        val before = charAt(run.first - 1)
+        val after = charAt(run.last + 1)
+        val left = !isFlankingWhitespace(after) &&
+            (!isFlankingPunctuation(after) || isFlankingWhitespace(before) || isFlankingPunctuation(before))
+        val right = !isFlankingWhitespace(before) &&
+            (!isFlankingPunctuation(before) || isFlankingWhitespace(after) || isFlankingPunctuation(after))
+        return Flanking(left, right, before, after)
+    }
+
+    // Whether the run of `marker` at `index` can open emphasis: `*` when left-flanking; `_` also not inside a
+    // word (snake_case_word).
+    private fun canOpen(marker: Char, index: Int): Boolean {
+        val f = flanking(runAround(marker, index))
+        return if (marker == '_') f.left && (!f.right || isFlankingPunctuation(f.before)) else f.left
+    }
+
+    // Whether the run of `marker` at `index` can close emphasis: `*` when right-flanking; `_` also not inside a
+    // word.
+    private fun canClose(marker: Char, index: Int): Boolean {
+        val f = flanking(runAround(marker, index))
+        return if (marker == '_') f.right && (!f.left || isFlankingPunctuation(f.after)) else f.right
+    }
+
+    // A stop closes the runs it ends: an emphasis stop only where its run can close.
+    private fun isCloser(stop: String, index: Int): Boolean {
+        val marker = stop.firstOrNull() ?: return true
+        if (marker != '*' && marker != '_') return true
+        return canClose(marker, index)
+    }
+
+    // MARK: Entities
+
+    // &name; (a common named entity), &#123; or &#x1F600; at pos: its text, pos past it; null when there is none
+    // (the & is literal).
+    private fun parseEntity(): String? {
+        var j = pos + 1
+        val body = StringBuilder()
+        while (j < chars.size && chars[j] != ';' && body.length < 32) {
+            body.append(chars[j])
+            j += 1
+        }
+        if (!(j < chars.size && chars[j] == ';') || body.isEmpty()) return null
+        val name = body.toString()
+        var decoded: String? = null
+        if (name.startsWith("#")) {
+            val digits = name.substring(1)
+            val hex = digits.startsWith("x") || digits.startsWith("X")
+            val number = if (hex) digits.substring(1) else digits
+            val maxDigits = if (hex) 6 else 7
+            val radix = if (hex) 16 else 10
+            // ASCII digits only: Character.digit and toInt would also take other scripts' digits.
+            val isDigit: (Char) -> Boolean = { it in '0'..'9' || (hex && (it in 'a'..'f' || it in 'A'..'F')) }
+            if (number.isNotEmpty() && number.length <= maxDigits && number.all(isDigit)) {
+                val value = number.toInt(radix)
+                val valid = value != 0 && value <= 0x10FFFF && value !in 0xD800..0xDFFF
+                decoded = if (valid) String(Character.toChars(value)) else "\uFFFD"
+            }
+        } else if (name.all { it.isAsciiLetterOrDigit() }) {
+            decoded = NAMED_ENTITIES[name]
+        }
+        if (decoded == null) return null
+        pos = j + 1
+        return decoded
+    }
+
+    // MARK: Autolinks
+
+    // <scheme:...> or <user@host> at pos: a link showing the address (mailto: for an email); null when the
+    // brackets hold neither (HTML, "a < b > c").
+    private fun parseAngleAutolink(): RichTextInline? {
+        var j = pos + 1
+        val content = StringBuilder()
+        while (j < chars.size && chars[j] != '>') {
+            val c = chars[j]
+            if (c == '<' || c.isWhitespace()) return null
+            content.append(c)
+            j += 1
+        }
+        if (j >= chars.size || content.isEmpty()) return null
+        val text = content.toString()
+        val url = when {
+            isAutolinkURI(text) -> text
+            isAutolinkEmail(text) -> "mailto:$text"
+            else -> return null
+        }
+        pos = j + 1
+        return RichTextInline.Link(listOf(RichTextInline.Text(text)), url)
+    }
 
     // ![alt](url) - the alt text is taken literally (image alt is plain text).
     private fun parseImage(): RichTextInline? {
@@ -630,7 +848,7 @@ private class RichTextInlineParser private constructor(text: String, private val
                     depth -= 1
                     if (depth == 0) {
                         pos += 1
-                        return RichTextInline.Image(alt.toString(), url.toString().trimMarkdownWhitespace())
+                        return RichTextInline.Image(alt.toString(), linkDestination(url.toString()))
                     }
                     url.append(c)
                     pos += 1
@@ -682,21 +900,35 @@ private class RichTextInlineParser private constructor(text: String, private val
         return s
     }
 
-    private fun parseEmphasis(marker: Char, depth: Int): RichTextInline? {
-        val start = pos
-        var run = 0
-        while (pos < chars.size && chars[pos] == marker) {
-            run += 1
-            pos += 1
+    // Whether an opener at `start` that searches for `closer` is already known to find none.
+    private fun knownUnclosed(closer: String, start: Int): Boolean =
+        start >= (unclosedFrom[closer] ?: Int.MAX_VALUE) && start !in closedAt
+
+    // Records the outcome of the search for `closer` from the opener at `start`. A success is kept only where the
+    // search parsed structure (below the depth cap), so a cap artifact is not trusted later.
+    private fun record(closer: String, start: Int, matched: Boolean, depth: Int) {
+        if (matched) {
+            if (depth + 1 <= MAX_DEPTH) {
+                closedAt.add(start)
+            }
+        } else {
+            closedAt.remove(start)
+            unclosedFrom[closer] = minOf(unclosedFrom[closer] ?: Int.MAX_VALUE, start)
         }
+    }
+
+    private fun parseEmphasis(marker: Char, depth: Int, inLink: Boolean): RichTextInline? {
+        val start = pos
+        val run = runAround(marker, start).last + 1 - start
 
         if (marker == '~') {
-            if (run < 2) {
+            if (run < 2 || knownUnclosed("~~", start)) {
                 pos = start
                 return null
             }
             pos = start + 2
-            val inner = parseRuns("~~", depth + 1)
+            val inner = parseRuns("~~", depth + 1, inLink)
+            record("~~", start, inner.matched, depth)
             if (inner.matched) {
                 return RichTextInline.Strikethrough(inner.nodes)
             }
@@ -704,10 +936,20 @@ private class RichTextInlineParser private constructor(text: String, private val
             return null
         }
 
+        // A run that cannot open (snake_case_word, 2 * 3 * 4) stays literal.
+        if (!canOpen(marker, start)) {
+            pos = start
+            return null
+        }
         val level = minOf(run, 3)
         val closer = marker.toString().repeat(level)
+        if (knownUnclosed(closer, start)) {
+            pos = start
+            return null
+        }
         pos = start + level
-        val inner = parseRuns(closer, depth + 1)
+        val inner = parseRuns(closer, depth + 1, inLink)
+        record(closer, start, inner.matched, depth)
         if (inner.matched) {
             return when (level) {
                 1 -> RichTextInline.Emphasis(inner.nodes)
@@ -719,7 +961,9 @@ private class RichTextInlineParser private constructor(text: String, private val
         return null
     }
 
-    private fun parseLink(depth: Int): RichTextInline? {
+    // [text](url), [text][ref], [text][] or [ref] at pos: the link; or, for an empty destination ([text]()), its
+    // text alone, as Apple's parser shows it. null when it is no link.
+    private fun parseLink(depth: Int): List<RichTextInline>? {
         val start = pos
         pos += 1                              // consume '['
         if (pos > lastCloseBracket) {         // no ']' ahead: not a link in any form - bail in O(1)
@@ -727,7 +971,11 @@ private class RichTextInlineParser private constructor(text: String, private val
             return null
         }
         val labelStart = pos
-        val text = parseRuns("]", depth + 1)
+        // The link text is a scope of its own for unclosedFrom: a span opened in it ends at its ']'.
+        val outerUnclosed = unclosedFrom
+        unclosedFrom = mutableMapOf()
+        val text = parseRuns("]", depth + 1, inLink = true)
+        unclosedFrom = outerUnclosed
         if (!text.matched) {
             pos = start
             return null
@@ -754,7 +1002,8 @@ private class RichTextInlineParser private constructor(text: String, private val
                         parenDepth -= 1
                         if (parenDepth == 0) {
                             pos += 1
-                            return RichTextInline.Link(text.nodes, url.toString().trimMarkdownWhitespace())
+                            val destination = linkDestination(url.toString())
+                            return if (destination.isEmpty()) text.nodes else listOf(RichTextInline.Link(text.nodes, destination))
                         }
                         url.append(c)
                         pos += 1
@@ -781,7 +1030,7 @@ private class RichTextInlineParser private constructor(text: String, private val
                 val url = references[key]
                 if (url != null) {
                     pos = j + 1
-                    return RichTextInline.Link(text.nodes, url)
+                    return listOf(RichTextInline.Link(text.nodes, url))
                 }
             }
             pos = start
@@ -792,7 +1041,7 @@ private class RichTextInlineParser private constructor(text: String, private val
         // so documents without reference definitions are unaffected).
         val url = references[labelString.lowercase()]
         if (url != null) {
-            return RichTextInline.Link(text.nodes, url)
+            return listOf(RichTextInline.Link(text.nodes, url))
         }
 
         pos = start

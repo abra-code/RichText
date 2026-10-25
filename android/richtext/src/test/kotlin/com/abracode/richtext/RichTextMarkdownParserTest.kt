@@ -232,6 +232,33 @@ class RichTextMarkdownParserTest {
         assertTrue(flat.endsWith("x"))
     }
 
+    @Test fun longMarkerRunParsesFastWithoutTextLoss() {
+        for (marker in listOf("*", "_")) {
+            val input = marker.repeat(20_000) + "x"
+            val start = System.nanoTime()
+            val blocks = parse(input)
+            assertTrue("a long $marker run should parse in linear time", elapsedMs(start) < 5000)
+            val first = blocks.first()
+            assertTrue(first is RichTextBlock.Paragraph)
+            assertEquals("no characters may be lost", input, (first as RichTextBlock.Paragraph).inlines.plainText)
+        }
+    }
+
+    @Test fun unclosedOpenersInManyLinksParseFast() {
+        val input = "[*a](https://u.com) *b* ".repeat(2_000)
+        val start = System.nanoTime()
+        val blocks = parse(input)
+        assertTrue(elapsedMs(start) < 5000)
+        val first = blocks.first() as RichTextBlock.Paragraph
+        assertEquals(2_000, first.inlines.count { it is RichTextInline.Emphasis })
+    }
+
+    @Test fun unclosedOpenerLeavesLaterEmphasisAlone() {
+        assertEquals(listOf(text("*a "), emph(text("b")), text(" c")), inlines("*a *b* c"))
+        assertEquals(listOf(link("https://u.com", text("*a")), text(" and "), emph(text("b"))),
+            inlines("[*a](https://u.com) and *b*"))
+    }
+
     @Test fun nestedLinkAndEmphasisStillParse() {
         assertEquals(
             listOf(para(link("v", emph(link("u", text("bold")))))),

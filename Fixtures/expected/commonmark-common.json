@@ -1,0 +1,258 @@
+[
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Identifiers like snake_case_word stay literal, and so does 2 * 3 * 4."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Intraword stars still emphasize: a"
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "b"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": "c, and "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "underscores"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " work between spaces."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Unclosed markers stay literal: **unclosed bold and *italic."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Autolinks in angle brackets: "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://example.com/path"
+          }
+        ],
+        "url": "https://example.com/path"
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "someone@example.com"
+          }
+        ],
+        "url": "mailto:someone@example.com"
+      },
+      {
+        "type": "text",
+        "value": "."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Entities decode: AT&T, © 2026, © and — but &unknown; stays."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A link with a title "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "Swift"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": " and one with spaces "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "doc"
+          }
+        ],
+        "url": "https://example.com/a%20b"
+      },
+      {
+        "type": "text",
+        "value": "."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An empty destination "
+      },
+      {
+        "type": "text",
+        "value": "shows only its text"
+      },
+      {
+        "type": "text",
+        "value": " here."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A URL with underscores "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://example.com/some_path_here"
+          }
+        ],
+        "url": "https://example.com/some_path_here"
+      },
+      {
+        "type": "text",
+        "value": " stays one link."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An unclosed *star leaves later "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "emphasis"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " alone, as in f(*args) for "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "each"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " item."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Link text keeps its spans: "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "*star"
+          }
+        ],
+        "url": "https://example.com"
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "emphasis",
+        "children": [
+          {
+            "type": "text",
+            "value": "after"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": "."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "Entity digits are ASCII only: &#+12; and &#٣; stay."
+      }
+    ]
+  }
+]
