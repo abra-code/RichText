@@ -105,6 +105,41 @@ class RichTextMarkdownParserTest {
         assertEquals("https://swift.org", l.text.plainText)
     }
 
+    // GFM's autolink rules, as Apple's AttributedString(markdown:) applies them.
+    @Test fun autolinkFollowsGFMRules() {
+        assertEquals(listOf(text("see example.com and WWW.EXAMPLE.COM")), inlines("see example.com and WWW.EXAMPLE.COM"))
+        assertEquals(
+            listOf(text("mail "), link("mailto:me@example.com", text("me@example.com")), text(".")),
+            inlines("mail me@example.com."),
+        )
+        assertEquals(listOf(link("mailto:me@example.com", text("mailto:me@example.com"))), inlines("mailto:me@example.com"))
+        assertEquals(listOf(link("ftp://files.example.com/a", text("ftp://files.example.com/a"))), inlines("ftp://files.example.com/a"))
+        assertEquals(
+            listOf(text("www.ex_ample.com and xhttp://example.com")),
+            inlines("www.ex_ample.com and xhttp://example.com"),
+        )
+        assertEquals(
+            listOf(text("("), link("https://e.com/Foo_(bar)", text("https://e.com/Foo_(bar)")), text("))")),
+            inlines("(https://e.com/Foo_(bar)))"),
+        )
+        assertEquals(listOf(code("x"), text("www.example.com")), inlines("`x`www.example.com"))
+    }
+
+    @Test fun autolinkIsLinearOnLongRuns() {
+        val input = "a@".repeat(20_000) + " " + "www.".repeat(20_000) + " " + "https://e.com/" + ")".repeat(20_000) +
+            " " + "_www.a".repeat(20_000)
+        val start = System.nanoTime()
+        parse(input)
+        assertTrue(elapsedMs(start) < 5000)
+    }
+
+    @Test fun lineEndingsAndClosingHashes() {
+        assertEquals(
+            listOf(para(text("a b c")), heading(1, text("C#")), heading(1, text("x #y"))),
+            parse("a\r\nb\rc\n\n# C# ##\n# x #y"),
+        )
+    }
+
     @Test fun urlInCodeIsNotLinked() {
         assertEquals(listOf(para(code("https://swift.org"))), parse("`https://swift.org`"))
     }

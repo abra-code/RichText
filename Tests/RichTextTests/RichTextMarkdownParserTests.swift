@@ -174,6 +174,37 @@ final class RichTextMarkdownParserTests: XCTestCase {
         XCTAssertEqual(text.plainText, "https://swift.org")
     }
 
+    // GFM's autolink rules, as Apple's AttributedString(markdown:) applies them.
+    func testAutolinkFollowsGFMRules() {
+        XCTAssertEqual(inlines("see example.com and WWW.EXAMPLE.COM"), [.text("see example.com and WWW.EXAMPLE.COM")],
+                       "a bare domain and an upper-case www stay text")
+        XCTAssertEqual(inlines("mail me@example.com."),
+                       [.text("mail "), .link(text: [.text("me@example.com")], url: "mailto:me@example.com"), .text(".")])
+        XCTAssertEqual(inlines("mailto:me@example.com"),
+                       [.link(text: [.text("mailto:me@example.com")], url: "mailto:me@example.com")])
+        XCTAssertEqual(inlines("ftp://files.example.com/a"),
+                       [.link(text: [.text("ftp://files.example.com/a")], url: "ftp://files.example.com/a")])
+        XCTAssertEqual(inlines("www.ex_ample.com and xhttp://example.com"), [.text("www.ex_ample.com and xhttp://example.com")],
+                       "an underscore in the last labels, or a longer scheme, is no link")
+        XCTAssertEqual(inlines("(https://e.com/Foo_(bar)))"),
+                       [.text("("), .link(text: [.text("https://e.com/Foo_(bar)")], url: "https://e.com/Foo_(bar)"), .text("))")])
+        XCTAssertEqual(inlines("`x`www.example.com"), [.code("x"), .text("www.example.com")],
+                       "a www host links only after a space, a line start or * _ ~ (")
+    }
+
+    func testAutolinkIsLinearOnLongRuns() {
+        let input = String(repeating: "a@", count: 20_000) + " " + String(repeating: "www.", count: 20_000)
+            + " " + "https://e.com/" + String(repeating: ")", count: 20_000) + " " + String(repeating: "_www.a", count: 20_000)
+        let start = Date()
+        _ = parse(input)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5.0)
+    }
+
+    func testLineEndingsAndClosingHashes() {
+        XCTAssertEqual(parse("a\r\nb\rc\n\n# C# ##\n# x #y"),
+                       [.paragraph([.text("a b c")]), .heading(level: 1, [.text("C#")]), .heading(level: 1, [.text("x #y")])])
+    }
+
     func testURLInCodeIsNotLinked() {
         XCTAssertEqual(parse("`https://swift.org`"), [.paragraph([.code("https://swift.org")])])
     }

@@ -5,3 +5,8 @@
 <p>A URL in parentheses (<a href="https://swift.org" style="color:#0066cc">https://swift.org</a>) keeps balanced brackets.</p>
 <p>A URL inside <code style="background:#f0f0f0;border-radius:4px;padding:0.1em 0.3em;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:0.94em">code https://swift.org</code> is not autolinked.</p>
 <p>A URL inside an existing <a href="https://example.test" style="color:#0066cc">https://swift.org</a> link is not re-linked.</p>
+<p>A bare domain example.test stays text, as does WWW.EXAMPLE.TEST in upper case.</p>
+<p>An email <a href="mailto:someone@example.test" style="color:#0066cc">someone@example.test</a> gets mailto:, while <a href="mailto:someone@example.test" style="color:#0066cc">mailto:someone@example.test</a> and ftp://files.example.test/a.txt link as written.</p>
+<p>A host with an underscore in its last labels, www.ex_ample.test, is not linked.</p>
+<p>An unbalanced bracket (see <a href="https://example.test/wiki/Foo_(bar)" style="color:#0066cc">https://example.test/wiki/Foo_(bar)</a>)) keeps only the balanced pair.</p>
+<p>A URL in angle brackets <a href="https://swift.org" style="color:#0066cc">https://swift.org</a> and one in bold <strong><a href="https://swift.org/" style="color:#0066cc">https://swift.org/</a></strong> link once.</p>

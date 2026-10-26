@@ -5,8 +5,6 @@
 // Markdown) write. It carries NO platform / TextKit types, so it is testable in isolation and shared
 // across iOS / macOS / visionOS.
 
-import Foundation
-
 /// A whole rich-text document: an ordered list of blocks.
 public struct RichTextDocument: Equatable, Sendable {
     public var blocks: [RichTextBlock]

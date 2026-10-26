@@ -167,5 +167,139 @@
         "value": " link is not re-linked."
       }
     ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A bare domain example.test stays text, as does WWW.EXAMPLE.TEST in upper case."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An email "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "someone@example.test"
+          }
+        ],
+        "url": "mailto:someone@example.test"
+      },
+      {
+        "type": "text",
+        "value": " gets mailto:, while "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "mailto:someone@example.test"
+          }
+        ],
+        "url": "mailto:someone@example.test"
+      },
+      {
+        "type": "text",
+        "value": " and "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "ftp://files.example.test/a.txt"
+          }
+        ],
+        "url": "ftp://files.example.test/a.txt"
+      },
+      {
+        "type": "text",
+        "value": " link as written."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A host with an underscore in its last labels, www.ex_ample.test, is not linked."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "An unbalanced bracket (see "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://example.test/wiki/Foo_(bar)"
+          }
+        ],
+        "url": "https://example.test/wiki/Foo_(bar)"
+      },
+      {
+        "type": "text",
+        "value": ")) keeps only the balanced pair."
+      }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A URL in angle brackets "
+      },
+      {
+        "type": "link",
+        "text": [
+          {
+            "type": "text",
+            "value": "https://swift.org"
+          }
+        ],
+        "url": "https://swift.org"
+      },
+      {
+        "type": "text",
+        "value": " and one in bold "
+      },
+      {
+        "type": "strong",
+        "children": [
+          {
+            "type": "link",
+            "text": [
+              {
+                "type": "text",
+                "value": "https://swift.org/"
+              }
+            ],
+            "url": "https://swift.org/"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "value": " link once."
+      }
+    ]
   }
 ]

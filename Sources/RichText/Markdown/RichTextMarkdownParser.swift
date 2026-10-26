@@ -11,8 +11,8 @@
 //
 // The parser is TOTAL: malformed or INCOMPLETE input never throws and never loses text (an unterminated
 // `**bold` renders as literal "**bold" until it closes). That property is what makes STREAMING safe.
-
-import Foundation
+//
+// It uses the standard library only, so it also builds where Foundation is not used (Linux).
 
 public extension RichTextDocument {
     /// Builds a document by parsing a Markdown string.
@@ -24,10 +24,7 @@ public extension RichTextDocument {
 public enum RichTextMarkdownParser {
 
     public static func parse(_ source: String) -> [RichTextBlock] {
-        let normalized = source
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        var lines = normalized.components(separatedBy: "\n")
+        var lines = source.markdownLines()
         let references = extractLinkReferences(&lines)
         return parseBlocks(lines, references: references)
     }
@@ -44,7 +41,7 @@ public enum RichTextMarkdownParser {
         var fenceChar: Character = "`"
         var fenceLength = 0
         for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = line.trimmingWhitespace()
             if inFence {
                 kept.append(line)
                 // Match parseFence's close rule: a closing fence is a line of only the fence char whose run
@@ -74,7 +71,7 @@ public enum RichTextMarkdownParser {
     }
 
     private static func parseLinkReferenceDefinition(_ line: String) -> (label: String, url: String)? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let trimmed = line.trimmingWhitespace()
         guard trimmed.hasPrefix("["), let close = trimmed.firstIndex(of: "]") else {
             return nil
         }
@@ -82,11 +79,11 @@ public enum RichTextMarkdownParser {
         guard afterClose < trimmed.endIndex, trimmed[afterClose] == ":" else {
             return nil
         }
-        let label = String(trimmed[trimmed.index(after: trimmed.startIndex)..<close]).trimmingCharacters(in: .whitespaces)
+        let label = String(trimmed[trimmed.index(after: trimmed.startIndex)..<close]).trimmingWhitespace()
         guard !label.isEmpty else {
             return nil
         }
-        let rest = String(trimmed[trimmed.index(after: afterClose)...]).trimmingCharacters(in: .whitespaces)
+        let rest = String(trimmed[trimmed.index(after: afterClose)...]).trimmingWhitespace()
         guard !rest.isEmpty else {
             return nil
         }
@@ -111,7 +108,7 @@ public enum RichTextMarkdownParser {
         var i = 0
         while i < lines.count {
             let line = lines[i]
-            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+            if line.trimmingWhitespace().isEmpty {
                 i += 1
                 continue
             }
@@ -158,7 +155,7 @@ public enum RichTextMarkdownParser {
             }
         }
         for line in lines {
-            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+            if line.trimmingWhitespace().isEmpty {
                 flush()
             } else {
                 group.append(line)
@@ -171,12 +168,12 @@ public enum RichTextMarkdownParser {
     // MARK: Fenced code
 
     private static func isFenceStartLine(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
+        let t = line.trimmingWhitespace()
         return t.hasPrefix("```") || t.hasPrefix("~~~")
     }
 
     private static func parseFence(_ lines: [String], _ i: inout Int) -> RichTextBlock? {
-        let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+        let trimmed = lines[i].trimmingWhitespace()
         let fenceChar: Character
         if trimmed.hasPrefix("```") {
             fenceChar = "`"
@@ -189,13 +186,13 @@ public enum RichTextMarkdownParser {
         if openLength < 3 {
             return nil
         }
-        let info = String(trimmed.drop(while: { $0 == fenceChar })).trimmingCharacters(in: .whitespaces)
-        let language = info.isEmpty ? nil : info.components(separatedBy: .whitespaces).first
+        let info = String(trimmed.drop(while: { $0 == fenceChar })).trimmingWhitespace()
+        let language = info.isEmpty ? nil : info.firstWord()
 
         var codeLines: [String] = []
         var j = i + 1
         while j < lines.count {
-            let candidate = lines[j].trimmingCharacters(in: .whitespaces)
+            let candidate = lines[j].trimmingWhitespace()
             let isClose = !candidate.isEmpty
                 && candidate.allSatisfy({ $0 == fenceChar })
                 && candidate.count >= openLength
@@ -222,15 +219,15 @@ public enum RichTextMarkdownParser {
         if let first = rest.first, first != " " {
             return nil
         }
-        var content = rest.trimmingCharacters(in: .whitespaces)
+        var content = rest.trimmingWhitespace()
         // A GFM ATX closing sequence is only a closing sequence when preceded by whitespace, so require a
         // space before the trailing '#'s. Without this "# C#" would wrongly strip the '#' from "C#".
-        content = content.replacingOccurrences(of: "\\s+#+\\s*$", with: "", options: .regularExpression)
+        content = content.droppingClosingHashes()
         return .heading(level: level, RichTextInlineParser.parse(content, references: references))
     }
 
     private static func isThematicBreak(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
+        let t = line.trimmingWhitespace()
         if t.count < 3 {
             return false
         }
@@ -331,7 +328,7 @@ public enum RichTextMarkdownParser {
 
             while i < lines.count {
                 let line = lines[i]
-                if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                if line.trimmingWhitespace().isEmpty {
                     let next = (i + 1) < lines.count ? lines[i + 1] : nil
                     let continues = next.map { line2 -> Bool in
                         let lead = line2.prefix(while: { $0 == " " }).count
@@ -381,7 +378,7 @@ public enum RichTextMarkdownParser {
         var j = i + 2
         while j < lines.count {
             let line = lines[j]
-            if line.trimmingCharacters(in: .whitespaces).isEmpty || !line.contains("|") {
+            if line.trimmingWhitespace().isEmpty || !line.contains("|") {
                 break
             }
             rows.append(splitTableRow(line).map { RichTextInlineParser.parse($0, references: references) })
@@ -392,7 +389,7 @@ public enum RichTextMarkdownParser {
     }
 
     private static func isTableDelimiter(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
+        let t = line.trimmingWhitespace()
         if !t.contains("-") || !t.contains("|") {
             return false
         }
@@ -403,14 +400,14 @@ public enum RichTextMarkdownParser {
     }
 
     private static func splitTableRow(_ line: String) -> [String] {
-        var t = line.trimmingCharacters(in: .whitespaces)
+        var t = line.trimmingWhitespace()
         if t.hasPrefix("|") {
             t = String(t.dropFirst())
         }
         if t.hasSuffix("|") {
             t = String(t.dropLast())
         }
-        return t.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+        return t.unicodeScalars.split(separator: "|", omittingEmptySubsequences: false).map { String(String.UnicodeScalarView($0)).trimmingWhitespace() }
     }
 
     private static func parseAlignments(_ line: String) -> [RichTextColumnAlignment] {
@@ -436,7 +433,7 @@ public enum RichTextMarkdownParser {
         var collected: [String] = []
         while i < lines.count {
             let line = lines[i]
-            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+            if line.trimmingWhitespace().isEmpty {
                 break
             }
             if isThematicBreak(line) || isFenceStartLine(line) || isBlockQuote(line)
@@ -805,10 +802,10 @@ private struct RichTextInlineParser {
     // The destination inside (...): <with spaces> (spaces as %20, as Apple's parser gives them), else
     // up to the first whitespace; a title after it ("Title", 'Title', (Title)) is left out.
     private static func linkDestination(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        let trimmed = raw.trimmingWhitespace()
         if trimmed.hasPrefix("<"), let close = trimmed.firstIndex(of: ">") {
             let inner = trimmed[trimmed.index(after: trimmed.startIndex)..<close]
-            return inner.replacingOccurrences(of: " ", with: "%20")
+            return inner.replacingSpaces(with: "%20")
         }
         return String(trimmed.prefix(while: { !$0.isWhitespace }))
     }
@@ -1026,7 +1023,7 @@ private struct RichTextInlineParser {
                 j += 1
             }
             if j < chars.count {
-                let refLabel = String(chars[(pos + 1)..<j]).trimmingCharacters(in: .whitespaces)
+                let refLabel = String(chars[(pos + 1)..<j]).trimmingWhitespace()
                 let key = (refLabel.isEmpty ? labelString : refLabel).lowercased()
                 if let url = references[key] {
                     pos = j + 1
@@ -1046,4 +1043,93 @@ private struct RichTextInlineParser {
         pos = start
         return nil
     }
+}
+
+// MARK: - Text helpers
+
+// The few Foundation string calls the parser needs, written with the standard library so the parser also
+// builds where Foundation is not used (Linux). They work on Unicode scalars, as Foundation's do.
+private extension StringProtocol {
+    /// The lines, split at "\n", "\r\n" and "\r".
+    func markdownLines() -> [String] {
+        var lines: [String] = []
+        var line = String.UnicodeScalarView()
+        var afterReturn = false
+        for scalar in unicodeScalars {
+            if scalar == "\n", afterReturn {
+                afterReturn = false
+                continue
+            }
+            afterReturn = scalar == "\r"
+            if scalar == "\n" || scalar == "\r" {
+                lines.append(String(line))
+                line = String.UnicodeScalarView()
+            } else {
+                line.append(scalar)
+            }
+        }
+        lines.append(String(line))
+        return lines
+    }
+
+    /// Without leading and trailing white space: tabs and Unicode space separators, as
+    /// trimmingCharacters(in: .whitespaces) has it.
+    func trimmingWhitespace() -> String {
+        let scalars = unicodeScalars
+        guard let first = scalars.firstIndex(where: { !isInlineWhitespace($0) }),
+              let last = scalars.lastIndex(where: { !isInlineWhitespace($0) }) else {
+            return ""
+        }
+        return String(String.UnicodeScalarView(scalars[first...last]))
+    }
+
+    /// The text up to its first white space (tab or space separator).
+    func firstWord() -> String {
+        return String(String.UnicodeScalarView(unicodeScalars.prefix(while: { !isInlineWhitespace($0) })))
+    }
+
+    /// Each space (U+0020) replaced by `replacement`.
+    func replacingSpaces(with replacement: String) -> String {
+        var result = String.UnicodeScalarView()
+        for scalar in unicodeScalars {
+            if scalar == " " {
+                result.append(contentsOf: replacement.unicodeScalars)
+            } else {
+                result.append(scalar)
+            }
+        }
+        return String(result)
+    }
+
+    /// Without a closing sequence of '#'s after white space at the end (an ATX heading's "## Title ##").
+    func droppingClosingHashes() -> String {
+        let scalars = Array(unicodeScalars)
+        var end = scalars.count
+        while end > 0, isRegexWhitespace(scalars[end - 1]) {
+            end -= 1
+        }
+        var hashes = end
+        while hashes > 0, scalars[hashes - 1] == "#" {
+            hashes -= 1
+        }
+        guard hashes < end, hashes > 0, isRegexWhitespace(scalars[hashes - 1]) else {
+            return String(self)
+        }
+        var cut = hashes
+        while cut > 0, isRegexWhitespace(scalars[cut - 1]) {
+            cut -= 1
+        }
+        return String(String.UnicodeScalarView(scalars[0..<cut]))
+    }
+}
+
+/// CharacterSet.whitespaces: the tab and Unicode's space separators.
+private func isInlineWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+    return scalar == "\t" || scalar.properties.generalCategory == .spaceSeparator
+}
+
+/// A regular expression's \s, which in ICU (NSRegularExpression) is Unicode's White_Space property: it
+/// includes the vertical tab and U+0085 besides tab, line feed, form feed, carriage return and the separators.
+private func isRegexWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+    return scalar.properties.isWhitespace
 }
