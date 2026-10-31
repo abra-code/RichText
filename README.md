@@ -58,7 +58,7 @@ On Linux the same `RichText` module builds over GTK 4 (`gtk4`, through pkg-confi
 - **Copy as rich text:** `RichTextGtkClipboard.write(_:)` puts HTML (loaded images embedded) and Markdown on the clipboard. There is no RTF on Linux; GTK programs take HTML.
 - Not on Linux yet: the quote bar and the table grid, wrapping table cells, and rounded code cards.
 
-`Demo/Linux` is a small GTK program with a sample document, the shared Markdown fixtures, the find bar, the remote-image policy and copy as rich text: `cd Demo/Linux && swift run RichTextDemo`.
+`Demo/Linux` is a small GTK program with a sample document, local and remote images, the shared Markdown fixtures, the find bar, the remote-image policy and copy as rich text: `cd Demo/Linux && swift run RichTextDemo`.
 
 ## How it works
 

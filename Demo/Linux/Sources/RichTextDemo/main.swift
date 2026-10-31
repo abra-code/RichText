@@ -1,8 +1,9 @@
 // Demo/Linux/Sources/RichTextDemo/main.swift
 //
 // A small GTK 4 program to try RichText on Linux: one document in a RichTextGtkView under a header bar that
-// picks the document (a sample, or one of the Markdown fixtures the tests use), sets the remote-image policy,
-// shows the find bar (also Ctrl+F) and copies the document as rich text (HTML and Markdown).
+// picks the document (a sample, local and remote images, or one of the Markdown fixtures the tests use), sets
+// the remote-image policy, shows the find bar (also Ctrl+F) and copies the document as rich text (HTML and
+// Markdown).
 
 import Foundation
 import CDemoGtk
@@ -66,19 +67,73 @@ func greet(_ name: String) -> String {
 That is all.
 """
 
-// The shared Markdown fixtures (Fixtures/markdown): beside the program when it was copied elsewhere with them,
-// otherwise found from this source file's place in the repository.
-func fixtureDocuments() -> [(name: String, markdown: String)] {
+// A message on standard error.
+func warn(_ message: String) {
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+}
+
+// A folder the demo reads: beside the program when it was copied elsewhere with it, otherwise found from this
+// source file's place in the repository (`inRepository` is relative to the repository's root).
+func resourceFolder(besideProgram name: String, inRepository path: String) -> URL {
     let besideProgram = Bundle.main.executableURL?.deletingLastPathComponent()
-        .appendingPathComponent("Fixtures/markdown", isDirectory: true)
+        .appendingPathComponent(name, isDirectory: true)
     let inRepository = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()   // Demo/Linux
         .deletingLastPathComponent().deletingLastPathComponent()                               // repository
-        .appendingPathComponent("Fixtures/markdown", isDirectory: true)
+        .appendingPathComponent(path, isDirectory: true)
     var isFolder: ObjCBool = false
-    let folder = besideProgram.flatMap {
+    return besideProgram.flatMap {
         FileManager.default.fileExists(atPath: $0.path, isDirectory: &isFolder) && isFolder.boolValue ? $0 : nil
     } ?? inRepository
+}
+
+// Images that load: two local files and two remote pictures. RichText never reads file: URLs, so the local
+// files are embedded as data: URLs.
+func imagesMarkdown() -> String {
+    let folder = resourceFolder(besideProgram: "Images", inRepository: "Demo/Linux/Images")
+    func embedded(_ name: String, _ type: String) -> String {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent(name)) else {
+            warn("cannot read the demo image \(folder.appendingPathComponent(name).path)")
+            return "data:,missing-\(name)"
+        }
+        return "data:\(type);base64,\(data.base64EncodedString())"
+    }
+    return """
+    # Images
+
+    ## Local
+
+    Two image files shipped with the demo, embedded in the Markdown as `data:` URLs (RichText never reads \
+    `file:` URLs). They always show, whatever the Remote Images menu says.
+
+    The ActionUI icon:
+
+    ![ActionUI icon](\(embedded("actionui.png", "image/png")))
+
+    The abracode cube, with transparency, so the page's background shows through it in light and dark:
+
+    ![abracode cube](\(embedded("abracode.png", "image/png")))
+
+    ## Remote
+
+    Fetched through AsyncImageCache (cached in memory and on disk) when the Remote Images menu allows it: \
+    automatically, on a click on the placeholder, or never.
+
+    A photo from picsum.photos:
+
+    ![A photo from picsum.photos](https://picsum.photos/seed/richtext/800/450)
+
+    The Swift logo from swift.org:
+
+    ![Swift logo](https://www.swift.org/apple-touch-icon.png)
+
+    For images that fail on purpose and their fallbacks, open the images-broken document.
+    """
+}
+
+// The shared Markdown fixtures (Fixtures/markdown).
+func fixtureDocuments() -> [(name: String, markdown: String)] {
+    let folder = resourceFolder(besideProgram: "Fixtures/markdown", inRepository: "Fixtures/markdown")
     let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
     return names.filter { $0.hasSuffix(".md") }.sorted().compactMap { name in
         guard let text = try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8) else {
@@ -88,7 +143,7 @@ func fixtureDocuments() -> [(name: String, markdown: String)] {
     }
 }
 
-let documents = [("Sample", sampleMarkdown)] + fixtureDocuments()
+let documents = [("Sample", sampleMarkdown), ("Images", imagesMarkdown())] + fixtureDocuments()
 
 // MARK: - Signals
 
@@ -153,13 +208,18 @@ func dropDown(_ items: [String]) -> UnsafeMutablePointer<GtkWidget> {
 
 // MARK: - Window
 
-let screenshotPath: String? = {
+// The value after a command-line option, as in `--screenshot <png>`.
+func optionValue(_ option: String) -> String? {
     let arguments = CommandLine.arguments
-    guard let index = arguments.firstIndex(of: "--screenshot"), index + 1 < arguments.count else {
+    guard let index = arguments.firstIndex(of: option), index + 1 < arguments.count else {
         return nil
     }
     return arguments[index + 1]
-}()
+}
+
+let screenshotPath = optionValue("--screenshot")
+// The document to open first, by its name in the menu (`--document tables`); the sample otherwise.
+let firstDocument = optionValue("--document")
 
 // Kept for the program's life.
 nonisolated(unsafe) var view: RichTextGtkView!
@@ -185,6 +245,13 @@ func buildWindow(_ application: UnsafeMutablePointer<GtkApplication>) {
         let index = Int(gtk_drop_down_get_selected(OpaquePointer(picker)))
         if documents.indices.contains(index) {
             MainActor.assumeIsolated { view.setMarkdown(documents[index].1) }
+        }
+    }
+    if let firstDocument {
+        if let index = documents.firstIndex(where: { $0.0 == firstDocument }) {
+            gtk_drop_down_set_selected(OpaquePointer(picker), guint(index))
+        } else {
+            warn("no document named \(firstDocument); the names are \(documents.map(\.0).joined(separator: ", "))")
         }
     }
     let policies: [RichTextRemoteImages] = [.automatic, .onClick, .never]
@@ -276,6 +343,6 @@ let application = gtk_application_new("com.abracode.RichTextDemo", G_APPLICATION
 connect(UnsafeMutableRawPointer(application), "activate") {
     MainActor.assumeIsolated { buildWindow(application) }
 }
-// GTK reads its own command-line options; the demo's (--screenshot) are not passed to it.
+// GTK reads its own command-line options; the demo's (--document, --screenshot) are not passed to it.
 let status = g_application_run(UnsafeMutableRawPointer(application).assumingMemoryBound(to: GApplication.self), 0, nil)
 exit(status)

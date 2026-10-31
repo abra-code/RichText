@@ -1,3 +1,5 @@
+Every image in this document fails on purpose, to show the fallbacks: example.test never resolves, the data: image holds only a PNG signature, and file: images are never read.
+
 A block image on its own line:
 
 ![a remote diagram](https://example.test/diagram.png)
