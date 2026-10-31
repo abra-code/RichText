@@ -221,7 +221,11 @@ public final class RichTextGtkFindBar {
         gtk_search_bar_set_show_close_button(searchBar, 1)
 
         RichTextGtkSignals.on(UnsafeMutableRawPointer(entry), "search-changed") { [weak self] in
-            guard let self, !updating else {
+            // A closing bar clears its field, and a cleared field reports at once - before the bar says it closed,
+            // so controller.isPresented is still true while the bar's mode already reads off. Taken as a query,
+            // that change would show the closing bar again from inside its own close, which leaves it hidden for
+            // good. The close itself clears the query (dismiss()).
+            guard let self, !updating, gtk_search_bar_get_search_mode(searchBar) != 0 else {
                 return
             }
             let text = gtk_editable_get_text(OpaquePointer(entry)).map { String(cString: $0) } ?? ""

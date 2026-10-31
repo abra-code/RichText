@@ -101,6 +101,39 @@ final class RichTextGtkFindTests: XCTestCase {
         XCTAssertEqual(entryText(bar), "")
     }
 
+    // Closed by the bar itself (its close button, or Escape in the field), the bar opens again on present(). The
+    // close button is the case that broke: the bar re-opened inside its own close and then stayed hidden for good.
+    // Escape also runs our "stop-search" handler afterwards, which put things right, so it is covered here but
+    // was never broken.
+    func testBarReopensAfterTheUserClosesIt() throws {
+        try XCTSkipUnless(gtkDisplay(), "no display")
+        let find = RichTextGtkFindController()
+        find.bind(text: "alpha beta alpha")
+        let bar = RichTextGtkFindBar(find)
+        for close in ["close button", "Escape"] {
+            find.present()
+            find.query = "alpha"
+            pump(milliseconds: 300)
+            if close == "close button" {
+                gtk_search_bar_set_search_mode(bar.widget, 0)
+            } else {
+                // Escape in the field emits "stop-search" (g_signal_emit_by_name is variadic, so through emitv).
+                var instance = GValue()
+                g_value_init(&instance, gtk_search_entry_get_type())
+                g_value_set_object(&instance, UnsafeMutableRawPointer(bar.entryForTests!))
+                g_signal_emitv(&instance, g_signal_lookup("stop-search", gtk_search_entry_get_type()), 0, nil)
+                g_value_unset(&instance)
+            }
+            pump(milliseconds: 300)
+            XCTAssertFalse(find.isPresented, close)
+            XCTAssertEqual(gtk_search_bar_get_search_mode(bar.widget), 0, close)
+            find.present()
+            pump(milliseconds: 300)
+            XCTAssertTrue(find.isPresented, close)
+            XCTAssertNotEqual(gtk_search_bar_get_search_mode(bar.widget), 0, "\(close): the bar shows again")
+        }
+    }
+
     // In a window: every present() (a repeat Ctrl+F too) puts the focus in the field, and the current match is
     // scrolled into view after the view rebuilds.
     func testPresentFocusesAndTheCurrentMatchIsScrolledTo() throws {
