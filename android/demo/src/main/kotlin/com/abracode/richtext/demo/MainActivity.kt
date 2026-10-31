@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import com.abracode.richtext.RichTextRemoteImages
 import com.abracode.richtext.find.RichTextFindBar
 import com.abracode.richtext.find.RichTextFindController
 import androidx.compose.runtime.getValue
@@ -70,6 +71,8 @@ private fun DemoApp() {
 
     var dark by remember { mutableStateOf(false) }
     var streaming by remember { mutableStateOf(false) }
+    // When the shown document's http and https images load: as it renders, on a tap on their placeholder, or never.
+    var remoteImages by remember { mutableStateOf(RichTextRemoteImages.AUTOMATIC) }
     var selected by remember { mutableIntStateOf(0) }
     // The find bar over the shown document: the search icon presents it (Android's Cmd-F), `RichText(find = ...)`
     // binds the document and paints the matches, and the current match's bounds scroll it into view below.
@@ -119,6 +122,19 @@ private fun DemoApp() {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     FilterChip(selected = streaming, onClick = { streaming = !streaming }, label = { Text("Stream") })
+                    FilterChip(
+                        selected = remoteImages != RichTextRemoteImages.AUTOMATIC,
+                        onClick = { remoteImages = RichTextRemoteImages.entries[(remoteImages.ordinal + 1) % RichTextRemoteImages.entries.size] },
+                        label = {
+                            Text(
+                                when (remoteImages) {
+                                    RichTextRemoteImages.AUTOMATIC -> "Remote images: automatic"
+                                    RichTextRemoteImages.ON_CLICK -> "Remote images: on tap"
+                                    RichTextRemoteImages.NEVER -> "Remote images: never"
+                                },
+                            )
+                        },
+                    )
                     Spacer(Modifier.width(0.dp))
                     Button(onClick = {
                         RichTextClipboard.write(shownMarkdown, context, label = documents.getOrNull(selected)?.name ?: "RichText")
@@ -163,7 +179,7 @@ private fun DemoApp() {
                         .verticalScroll(scroll)
                         .padding(16.dp),
                 ) {
-                    RichText(markdown = shownMarkdown, find = find)
+                    RichText(markdown = shownMarkdown, find = find, remoteImages = remoteImages)
                 }
             }
         }

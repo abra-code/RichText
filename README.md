@@ -39,7 +39,7 @@ Fetching an image is itself a disclosure: the request tells the image's host tha
 - `.onClick`: a placeholder shows the image's alt text and host ("Click to load from example.com", "Tap" on iOS); a click on it fetches that one image.
 - `.never`: the placeholder says remote images are off.
 
-`data:` and local `file:` images always show. An image already in the shared cache shows in every mode, since showing cached bytes sends nothing. The Android port does not have this option yet; it fetches as `.automatic` does.
+`data:` and local `file:` images always show. An image already in the shared cache shows in every mode, since showing cached bytes sends nothing. On Android it is the `remoteImages` parameter of the `RichText` composable (`RichTextRemoteImages.AUTOMATIC`, `ON_CLICK`, `NEVER`); a held image's placeholder says "Tap to load from ...".
 
 ## Find and highlight
 

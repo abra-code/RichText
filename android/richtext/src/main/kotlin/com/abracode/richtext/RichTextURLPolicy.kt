@@ -43,6 +43,18 @@ object RichTextURLPolicy {
         return scheme in allowedImageSchemes
     }
 
+    /**
+     * Whether loading an image URL means a fetch from somewhere else (today http / https), which
+     * [RichTextRemoteImages] governs: every allowed scheme except `data:`, whose bytes are already in the document,
+     * and `file:`, which is read locally. Defined by exclusion, so a scheme added to [allowedImageSchemes] later is
+     * held by default.
+     */
+    fun isRemoteImage(url: String): Boolean {
+        if (!allowsImage(url)) return false
+        val scheme = schemeOf(url)?.lowercase() ?: return false
+        return scheme != "data" && scheme != "file"
+    }
+
     // RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) terminated by ':'. Returns the scheme (without
     // the ':'), or null when the string does not begin with an absolute scheme - the same distinction Swift's
     // URL(string:).scheme draws between an absolute URL and a relative/scheme-less one.

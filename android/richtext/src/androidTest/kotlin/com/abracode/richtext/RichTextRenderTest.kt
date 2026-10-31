@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.abracode.richtext.rendering.RichText
 import org.junit.Rule
 import org.junit.Test
@@ -23,9 +24,13 @@ class RichTextRenderTest {
 
     @get:Rule val composeTestRule = createComposeRule()
 
-    private fun setMarkdown(markdown: String, dark: Boolean = false) {
+    private fun setMarkdown(
+        markdown: String,
+        dark: Boolean = false,
+        remoteImages: RichTextRemoteImages = RichTextRemoteImages.AUTOMATIC,
+    ) {
         composeTestRule.setContent {
-            Themed(dark) { RichText(markdown = markdown) }
+            Themed(dark) { RichText(markdown = markdown, remoteImages = remoteImages) }
         }
     }
 
@@ -88,6 +93,27 @@ class RichTextRenderTest {
         // placeholder instead of guessing.
         setMarkdown("![secret](img/secret.png)")
         composeTestRule.onNodeWithText("secret (unavailable)", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    // Remote images under NEVER and ON_CLICK: a placeholder naming the host instead of a fetch; a tap loads one
+    // image under ON_CLICK. Every host is on .invalid, so nothing can leave the device. As on Apple platforms.
+    @Test fun remoteImagesNeverShowTheirHost() {
+        setMarkdown("![chart](https://charts.invalid/c.png)", remoteImages = RichTextRemoteImages.NEVER)
+        composeTestRule.onNodeWithText("chart\nNot loaded from charts.invalid: remote images are off", useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test fun remoteImagesOnClickLoadAfterATap() {
+        setMarkdown("![chart](https://tap.invalid/c.png)", remoteImages = RichTextRemoteImages.ON_CLICK)
+        val held = composeTestRule.onNodeWithText("chart\nTap to load from tap.invalid", useUnmergedTree = true)
+        held.assertExists()
+        held.performClick()
+        composeTestRule.onNodeWithText("Tap to load from tap.invalid", substring = true, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun dataImagesAreNeverHeld() {
+        setMarkdown("![dot](data:image/png;base64,iVBORw0KGgo=)", remoteImages = RichTextRemoteImages.NEVER)
+        composeTestRule.onNodeWithText("remote images are off", substring = true, useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test fun resolvesColorsInDarkTheme() {

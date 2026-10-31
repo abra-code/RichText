@@ -2,6 +2,7 @@ package com.abracode.richtext.rendering
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -46,12 +48,16 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abracode.asyncimagecache.CachedImage
 import com.abracode.asyncimagecache.ContentMode
 import com.abracode.asyncimagecache.ImageStore
+import com.abracode.richtext.RichTextImageHold
+import com.abracode.richtext.RichTextImagePlaceholder
+import com.abracode.richtext.RichTextRemoteImages
 import com.abracode.richtext.RichTextURLPolicy
 import com.abracode.richtext.model.RichTextBlock
 import com.abracode.richtext.model.RichTextDocument
@@ -74,6 +80,12 @@ import androidx.compose.ui.text.PlaceholderVerticalAlign
  * current match's bounds in WINDOW coordinates once laid out (null when there is none) so a host scroller can
  * bring it into view. [find] does both for a [RichTextFindController] and keeps it bound to this document's
  * rendered text; explicit [highlights] win over the controller's.
+ *
+ * [remoteImages] decides when http and https images are fetched: [RichTextRemoteImages.AUTOMATIC] (the default) as
+ * soon as the document renders, [RichTextRemoteImages.ON_CLICK] when the user taps an image's placeholder, which
+ * names the image's host, or [RichTextRemoteImages.NEVER]. Use ON_CLICK or NEVER for Markdown from a party that
+ * should not be able to make this device send a request - a model or an agent - since an image URL can carry data
+ * out.
  */
 @Composable
 fun RichText(
@@ -83,6 +95,7 @@ fun RichText(
     highlights: RichTextHighlights? = null,
     onCurrentMatchBounds: ((Rect?) -> Unit)? = null,
     find: RichTextFindController? = null,
+    remoteImages: RichTextRemoteImages = RichTextRemoteImages.AUTOMATIC,
 ) {
     val colors = rememberRichTextColors()
     val bodySize = theme.baseFontSize?.sp ?: 16.sp
@@ -100,8 +113,8 @@ fun RichText(
     LaunchedEffect(effective?.currentRange, report) {
         if (effective?.currentRange == null) report?.invoke(null)
     }
-    val scope = remember(theme, colors, bodySize, layout, effective, report) {
-        RichTextScope(theme, colors, bodySize, layout, effective, report)
+    val scope = remember(theme, colors, bodySize, layout, effective, report, remoteImages) {
+        RichTextScope(theme, colors, bodySize, layout, effective, report, remoteImages)
     }
     SelectionContainer(modifier) {
         Column(
@@ -122,7 +135,7 @@ fun RichText(
  * case) only re-parse when the text actually changes; the parser's totality makes re-parsing partial input safe.
  * [baseUrl] is the document's own location, for Markdown read from a file or a web page: relative image paths
  * (`img/a.png`) resolve against it (see [resolvingImageUrls]); without it they cannot load. It must be a URL
- * string, such as `Uri.fromFile(file).toString()`.
+ * string, such as `Uri.fromFile(file).toString()`. [remoteImages] is as in the document overload.
  */
 @Composable
 fun RichText(
@@ -133,12 +146,13 @@ fun RichText(
     onCurrentMatchBounds: ((Rect?) -> Unit)? = null,
     find: RichTextFindController? = null,
     baseUrl: String? = null,
+    remoteImages: RichTextRemoteImages = RichTextRemoteImages.AUTOMATIC,
 ) {
     val document = remember(markdown, baseUrl) {
         val parsed = RichTextDocument.parse(markdown)
         if (baseUrl != null) parsed.resolvingImageUrls(baseUrl) else parsed
     }
-    RichText(document, theme, modifier, highlights, onCurrentMatchBounds, find)
+    RichText(document, theme, modifier, highlights, onCurrentMatchBounds, find, remoteImages)
 }
 
 // Immutable render context threaded through the block composables (Compose-resolved theme + colors + body size),
@@ -151,6 +165,7 @@ internal class RichTextScope(
     val layout: RichTextRenderedText.Layout,
     val highlights: RichTextHighlights?,
     val onCurrentMatchBounds: ((Rect?) -> Unit)?,
+    val remoteImages: RichTextRemoteImages,
 ) {
     /** The highlights of segment [index], local to it; null when nothing lights it. */
     fun local(index: Int): RichTextLocalHighlights? = layout.localHighlights(index, highlights)
@@ -472,7 +487,7 @@ private fun rememberInlineImageContent(
     val density = LocalDensity.current
     // Memoized on the (stable, already-memoized) image list so the reserved-size computation - which reads the
     // cached pixel size (a disk stat on a cold cache) - runs once per content change, not every recomposition.
-    return remember(images, scope.colors, density) {
+    return remember(images, scope.colors, density, scope.remoteImages) {
         images.associate { ref ->
             val allowed = RichTextURLPolicy.allowsImage(ref.url)
             val pixel = if (allowed) ImageStore.shared(context).cachedPixelSize(ref.url) else null
@@ -485,18 +500,7 @@ private fun rememberInlineImageContent(
             ref.id to InlineTextContent(
                 Placeholder(widthSp, heightSp, PlaceholderVerticalAlign.AboveBaseline),
             ) {
-                if (allowed) {
-                    CachedImage(
-                        url = ref.url,
-                        modifier = Modifier.fillMaxSize(),
-                        cornerRadius = 6.dp,
-                        contentMode = ContentMode.Fit,
-                        maxPixelWidth = IMAGE_DECODE_MAX_PX,
-                        contentDescription = ref.alt.ifEmpty { null },
-                    )
-                } else {
-                    AltPlaceholderBox(ref.alt, scope, Modifier.fillMaxSize())
-                }
+                ImageContent(ref.url, ref.alt, scope, Modifier.fillMaxSize())
             }
         }
     }
@@ -504,28 +508,54 @@ private fun rememberInlineImageContent(
 
 @Composable
 private fun BlockImageView(image: RichTextInline.Image, scope: RichTextScope) {
-    if (!RichTextURLPolicy.allowsImage(image.url)) {
-        AltPlaceholderBox(image.alt, scope, Modifier.fillMaxWidth().widthIn(max = BLOCK_IMAGE_MAX_WIDTH_DP.dp))
+    ImageContent(image.url, image.alt, scope, Modifier.fillMaxWidth().widthIn(max = BLOCK_IMAGE_MAX_WIDTH_DP.dp))
+}
+
+// An image, block or inline: the picture; an "(unavailable)" placeholder for a scheme that is not allow-listed
+// (javascript:, a relative path), never fetched; or, for a remote image [scope.remoteImages] holds, a placeholder
+// naming its host - which a tap loads under ON_CLICK. An image already in the memory cache shows in every mode,
+// since showing cached bytes sends nothing (as on Apple platforms).
+@Composable
+private fun ImageContent(url: String, alt: String, scope: RichTextScope, modifier: Modifier) {
+    if (!RichTextURLPolicy.allowsImage(url)) {
+        AltPlaceholderBox(RichTextImagePlaceholder.label(alt, url, failed = true, RichTextImageHold.NONE, "Tap"), scope, modifier)
+        return
+    }
+    val context = LocalContext.current
+    // A tap approves the image under ON_CLICK only; it does not outlive a switch to NEVER, as on Apple platforms.
+    var approved by remember(url) { mutableStateOf(false) }
+    val held = RichTextURLPolicy.isRemoteImage(url) && (scope.remoteImages == RichTextRemoteImages.NEVER ||
+        (scope.remoteImages == RichTextRemoteImages.ON_CLICK && !approved))
+    // The cache is checked on each composition, not remembered, as Apple re-checks it on each loading pass: an
+    // image that arrived after the first composition (shown under AUTOMATIC, or after a tap) stays shown after a
+    // switch to ON_CLICK or NEVER. AUTOMATIC never looks.
+    val hold = when {
+        !held || ImageStore.shared(context).cachedOriginalBytes(url) != null -> RichTextImageHold.NONE
+        scope.remoteImages == RichTextRemoteImages.NEVER -> RichTextImageHold.OFF
+        else -> RichTextImageHold.AWAITING_CLICK
+    }
+    if (hold != RichTextImageHold.NONE) {
+        val label = RichTextImagePlaceholder.label(alt, url, failed = false, hold, "Tap")
+        AltPlaceholderBox(label, scope, if (hold == RichTextImageHold.AWAITING_CLICK) modifier.clickable(onClickLabel = "Load image", role = Role.Button) { approved = true } else modifier)
         return
     }
     // Cap the display width at the Swift defaultMaxWidth (320) and the decode/cache size at 320px (an OOM guard,
     // matching Swift): a 4000x4000 source is not retained as a ~64 MB bitmap. CachedImage reserves height from the
     // cached aspect ratio and shows a neutral placeholder while loading, with alt as the TalkBack description.
     CachedImage(
-        url = image.url,
-        modifier = Modifier.fillMaxWidth().widthIn(max = BLOCK_IMAGE_MAX_WIDTH_DP.dp),
+        url = url,
+        modifier = modifier,
         cornerRadius = 6.dp,
         contentMode = ContentMode.Fit,
         maxPixelWidth = IMAGE_DECODE_MAX_PX,
-        contentDescription = image.alt.ifEmpty { null },
+        contentDescription = alt.ifEmpty { null },
     )
 }
 
-// A rounded bordered box showing alt text, for images whose scheme is not allow-listed (javascript:, a relative
-// path) - mirrors
+// A rounded bordered box with the placeholder's text (RichTextImagePlaceholder), one line per line of it - mirrors
 // the Swift image placeholder (codeFill fill, separator border, radius 6, secondary label) without any fetch.
 @Composable
-private fun AltPlaceholderBox(alt: String, scope: RichTextScope, modifier: Modifier = Modifier) {
+private fun AltPlaceholderBox(label: String, scope: RichTextScope, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(scope.colors.codeFill, RoundedCornerShape(6.dp))
@@ -534,8 +564,8 @@ private fun AltPlaceholderBox(alt: String, scope: RichTextScope, modifier: Modif
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (alt.isEmpty()) "image unavailable" else "$alt (unavailable)",
-            style = TextStyle(fontSize = 12.sp, color = scope.colors.secondary),
+            text = label,
+            style = TextStyle(fontSize = 12.sp, color = scope.colors.secondary, textAlign = TextAlign.Center),
         )
     }
 }
