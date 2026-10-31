@@ -57,10 +57,10 @@ The Android port has the same three layers (`RichTextSearch` / `RichTextPlainTex
 
 On Linux the same `RichText` module builds over GTK 4 (`gtk4`, through pkg-config) and FoundationEssentials, with AsyncImageCache 0.2.1 or later for images. The oldest versions supported are GNOME 48's: GTK 4.18 and GLib 2.84.
 
-- **`RichTextGtkView`** shows a document in one read-only GtkTextView, selectable and copyable as a unit: headings, inline styles, code blocks colored by the same syntax highlighter, quotes, lists, rules, tab-stop tables, links that open on a click, and images loading through AsyncImageCache under `remoteImages`. Colors follow the GTK style, light and dark; a libadwaita host calls `refreshColors()` when its style changes. Pad its sides with the widget's margins (the document's indents replace the text view's left and right margins); its top and bottom margins are free to use.
+- **`RichTextGtkView`** shows a document in one read-only GtkTextView, selectable and copyable as a unit: headings, inline styles, code blocks colored by the same syntax highlighter on rounded cards, quotes with their bar, lists, rules, tab-stop tables with their grid, links that open on a click, and images loading through AsyncImageCache under `remoteImages`. Colors follow the GTK style, light and dark; a libadwaita host calls `refreshColors()` when its style changes. Pad its sides with the widget's margins (the document's indents replace the text view's left and right margins); its top and bottom margins are free to use.
 - **Find:** `RichTextSearch` on Linux has the same options, over GLib (case folding, normalization, and GRegex, which is PCRE2, for regular expressions), with ranges in Unicode scalars, the GtkTextBuffer's character offsets. `RichTextGtkFindController` and `RichTextGtkFindBar` (a GtkSearchBar the host places above its scrolled window, with Ctrl+F and Ctrl+G) mirror the Apple controller and bar.
 - **Copy as rich text:** `RichTextGtkClipboard.write(_:)` puts HTML (loaded images embedded) and Markdown on the clipboard. There is no RTF on Linux; GTK programs take HTML.
-- Not on Linux yet: the quote bar and the table grid, wrapping table cells, and rounded code cards.
+- Not on Linux yet: wrapping table cells.
 
 `Demo/Linux` is a small GTK program with a sample document, local and remote images, the shared Markdown fixtures, the find bar, the remote-image policy and copy as rich text: `cd Demo/Linux && swift run RichTextDemo`.
 

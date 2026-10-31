@@ -8,7 +8,8 @@
 // (gtk_text_view_set_top_margin, _bottom_margin) are free to use and scroll with the text.
 //
 // Links open on a click (not on a drag that selects text) through GtkUriLauncher, the system's handler for the
-// URL, as the Apple text views open theirs; the pointer is a hand over a link. Images load through
+// URL, as the Apple text views open theirs; the pointer is a hand over a link. Code cards, quote bars and the table
+// grid are painted behind the text (RichTextGtkDecorations.swift). Images load through
 // AsyncImageCache into widgets at their places in the text (RichTextGtkImageSlot), as remoteImages allows.
 // Colors follow the GTK style: a plain GTK program's light/dark switch (GtkSettings) recolors the text in
 // place, and a host whose style changes another way (libadwaita's AdwStyleManager) calls refreshColors().
@@ -68,6 +69,11 @@ public final class RichTextGtkView {
     /// The find controller bound to this view (RichTextGtkFindController.bind(view:)), told when the text changes.
     weak var findController: RichTextGtkFindController?
 
+    /// The GtkTextView, for the decorations' painting (RichTextGtkDecorations.swift).
+    var textViewPointer: UnsafeMutablePointer<GtkTextView> {
+        textView
+    }
+
     private var widgetPointer: UnsafeMutablePointer<GtkWidget> {
         UnsafeMutableRawPointer(textView).assumingMemoryBound(to: GtkWidget.self)
     }
@@ -77,7 +83,7 @@ public final class RichTextGtkView {
         self.document = document
         self.theme = theme
         self.remoteImages = remoteImages
-        let made = gtk_text_view_new()!
+        let made = RichTextGtkDecoratedTextView.make()
         g_object_ref_sink(UnsafeMutableRawPointer(made))
         widget = OpaquePointer(made)
         textView = UnsafeMutableRawPointer(made).assumingMemoryBound(to: GtkTextView.self)
@@ -88,6 +94,7 @@ public final class RichTextGtkView {
         rebuild()
         openLinksOnClick()
         followStyleChanges()
+        RichTextGtkDecoratedTextView.paint(textView, by: self)
     }
 
     /// `baseURL` is the document's own location, for Markdown read from a file or a web page: relative image
@@ -113,6 +120,8 @@ public final class RichTextGtkView {
     /// (libadwaita's AdwStyleManager "dark") calls it too.
     public func refreshColors() {
         builder?.recolor(currentPalette())
+        // The decorations are painted in the palette's colors, not held by tags.
+        gtk_widget_queue_draw(widgetPointer)
     }
 
     /// The link at a character offset of the text, if any.

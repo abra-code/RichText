@@ -4,7 +4,8 @@
 // counterpart of RichTextAttributedBuilder. Inline styling and paragraph layout are GtkTextTags (weight,
 // style, strikethrough, monospace, margins, paragraph backgrounds, spacing); code blocks are colored from the
 // shared syntax tokens; tables are tab-stop rows with measured, content-sized columns, as the TextKit 2 path
-// lays them out.
+// lays them out. Code cards, quote bars and the table grid are recorded as decorations, which the view paints
+// behind the text (RichTextGtkDecorations.swift).
 //
 // Offsets into the buffer are GTK character offsets, which count Unicode scalars.
 
@@ -76,6 +77,9 @@ final class RichTextGtkBuilder {
     private var spacerEnd: Int?
     private(set) var links: [RichTextGtkLink] = []
     private(set) var images: [RichTextGtkImage] = []
+    private(set) var decorations: [RichTextGtkDecoration] = []
+    // The innermost block quote's bar position while its blocks are appended (each paragraph gets the bar).
+    private var quoteBarX: Double?
 
     /// The ratio of each heading level's size to the body size: macOS's title1, title2, title3, headline and
     /// subheadline text styles against its 13-point body, which the Apple renderer uses.
@@ -103,6 +107,8 @@ final class RichTextGtkBuilder {
         offset = 0
         links = []
         images = []
+        decorations = []
+        quoteBarX = nil
         spacerStart = nil
         spacerEnd = nil
         // Made before any other tag: a tag table gives later tags the higher priority, so the heading and code
@@ -153,7 +159,11 @@ final class RichTextGtkBuilder {
             appendCodeBlock(code, language: language, indent: indent)
 
         case .blockQuote(let inner):
+            // As on Apple platforms: one bar, for the innermost quote, 12 pixels left of its text.
+            let outer = quoteBarX
+            quoteBarX = indent + Double(theme.indentStep) - 12
             appendBlocks(inner, indent: indent + Double(theme.indentStep), secondary: true)
+            quoteBarX = outer
 
         case .list(let ordered, let start, _, let items):
             appendList(ordered: ordered, start: start, items: items, indent: indent, secondary: secondary)
@@ -184,7 +194,10 @@ final class RichTextGtkBuilder {
             }
         }
         // The card's background covers its lines' spacing, so the space after the card is a line of its own.
+        // The card is recorded before a quote's bar for the same lines, so the bar is painted over it, as on Apple.
+        let cardIndex = decorations.count
         paragraphEnd(start: start, tags: [codeBlockTag(), marginTag(left: indent + 10, right: 10)], above: 2, below: 2)
+        decorations.insert(RichTextGtkDecoration(kind: .codeCard, range: start..<offset), at: cardIndex)
         appendSpacer(Double(theme.blockSpacing) - 2)
     }
 
@@ -193,7 +206,8 @@ final class RichTextGtkBuilder {
     private func appendSpacer(_ height: Double) {
         let start = offset
         insert(" ")
-        paragraphEnd(start: start, tags: [namedTag("spacer", [("size-points", .double(1))])], below: RichTextLength(max(0, height)))
+        paragraphEnd(start: start, tags: [namedTag("spacer", [("size-points", .double(1))])], below: RichTextLength(max(0, height)),
+                     decorated: false)
         spacerStart = start
         spacerEnd = offset
     }
@@ -239,7 +253,7 @@ final class RichTextGtkBuilder {
     // MARK: - Tables
 
     // Tab-stop rows with content-sized columns (the TextKit 2 layout on Apple platforms): cells are single
-    // lines; the header row is bold on the code fill.
+    // lines; the header row is bold. The grid and the header's fill are painted (a tableRow decoration).
     private func appendTable(headers: [[RichTextInline]], alignments: [RichTextColumnAlignment],
                              rows: [[[RichTextInline]]], indent: Double, secondary: Bool) {
         let columns = max(headers.count, rows.map(\.count).max() ?? 0)
@@ -266,11 +280,10 @@ final class RichTextGtkBuilder {
                 insert("\t")
                 appendInlines(column < cells.count ? cells[column] : [], style: InlineStyle(bold: header, secondary: secondary))
             }
-            var rowTags = [tabs]
-            if header {
-                rowTags.append(headerRowTag())
-            }
-            paragraphEnd(start: start, tags: rowTags, below: rowIndex == allRows.count - 1 ? theme.blockSpacing : 0)
+            let below = rowIndex == allRows.count - 1 ? theme.blockSpacing : 0
+            paragraphEnd(start: start, tags: [tabs], below: below)
+            decorations.append(RichTextGtkDecoration(kind: .tableRow(edges: edges, header: header, firstRow: rowIndex == 0),
+                                                     range: start..<offset, spacingBelow: Double(below)))
         }
     }
 
@@ -465,8 +478,6 @@ final class RichTextGtkBuilder {
             ("secondary", "foreground-rgba", palette.secondary),
             ("link", "foreground-rgba", palette.link),
             ("code", "background-rgba", palette.codeFill),
-            ("code-block", "paragraph-background-rgba", palette.codeFill),
-            ("header-row", "paragraph-background-rgba", palette.codeFill),
             ("rule", "paragraph-background-rgba", palette.separator),
             ("syntax-keyword", "foreground-rgba", palette.syntaxKeyword),
             ("syntax-string", "foreground-rgba", palette.syntaxString),
@@ -493,17 +504,13 @@ final class RichTextGtkBuilder {
                           ("background-rgba", .rgba(palette.codeFill))])
     }
 
+    // The card behind it is painted (a codeCard decoration).
     private func codeBlockTag() -> UnsafeMutablePointer<GtkTextTag> {
-        namedTag("code-block", [("family", .string("monospace")), sizeProperty(Self.codeScale),
-                                ("paragraph-background-rgba", .rgba(palette.codeFill))])
+        namedTag("code-block", [("family", .string("monospace")), sizeProperty(Self.codeScale)])
     }
 
     private func ruleTag() -> UnsafeMutablePointer<GtkTextTag> {
         namedTag("rule", [("size-points", .double(1)), ("paragraph-background-rgba", .rgba(palette.separator))])
-    }
-
-    private func headerRowTag() -> UnsafeMutablePointer<GtkTextTag> {
-        namedTag("header-row", [("paragraph-background-rgba", .rgba(palette.codeFill))])
     }
 
     private func secondaryTag() -> UnsafeMutablePointer<GtkTextTag> {
@@ -556,10 +563,15 @@ final class RichTextGtkBuilder {
     // MARK: - Buffer
 
     // Ends the paragraph that started at `start`: a line break, then the block's tags over the whole paragraph,
-    // the base size when the theme sets one, and the spacing.
+    // the base size when the theme sets one, and the spacing. Inside a block quote, the paragraph gets the
+    // quote's bar beside its lines (unless it is only space: `decorated` false).
     private func paragraphEnd(start: Int, tags blockTags: [UnsafeMutablePointer<GtkTextTag>],
-                              above: RichTextLength = 0, below: RichTextLength) {
+                              above: RichTextLength = 0, below: RichTextLength, decorated: Bool = true) {
         insert("\n")
+        if decorated, let quoteBarX {
+            decorations.append(RichTextGtkDecoration(kind: .quoteBar(x: quoteBarX), range: start..<offset,
+                                                     spacingAbove: Double(above), spacingBelow: Double(below)))
+        }
         for tag in blockTags {
             apply(tag, from: start, to: offset)
         }

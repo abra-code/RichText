@@ -251,6 +251,39 @@ final class RichTextGtkBuilderTests: XCTestCase {
         XCTAssertEqual(links, [RichTextGtkLink(range: start..<(start + 5), url: URL(string: "https://swift.org")!)])
     }
 
+    // The shapes painted behind the text: a card over a code block's lines, a bar beside each quoted paragraph
+    // (the innermost quote's, 12 pixels left of its text), and a grid row per table row.
+    func testDecorationsAreRecorded() throws {
+        let text = build("```\nlet x\nlet y\n```\n\n> outer\n>\n> > inner\n\n| A | B |\n| - | - |\n| 1 | 2 |")
+        let decorations = try XCTUnwrap(lastBuilder?.decorations)
+        let step = Double(RichTextTheme.default.indentStep)
+
+        let card = try XCTUnwrap(decorations.first { $0.kind == .codeCard })
+        XCTAssertEqual(card.range.lowerBound, offset(of: "let x", in: text))
+        XCTAssertEqual(card.range.upperBound, offset(of: "let y", in: text) + "let y\n".count, "through the last line's break")
+
+        let bars = decorations.compactMap { decoration -> (Double, Int)? in
+            if case .quoteBar(let x) = decoration.kind {
+                return (x, decoration.range.lowerBound)
+            }
+            return nil
+        }
+        XCTAssertEqual(bars.map(\.0), [step - 12, step * 2 - 12], "one bar per quoted paragraph, the innermost quote's")
+        XCTAssertEqual(bars.map(\.1), [offset(of: "outer", in: text), offset(of: "inner", in: text)])
+
+        let rows = decorations.compactMap { decoration -> (Bool, Bool, Double, Int)? in
+            if case .tableRow(let edges, let header, let firstRow) = decoration.kind {
+                return (header, firstRow, decoration.spacingBelow, edges.count)
+            }
+            return nil
+        }
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.map(\.0), [true, false], "the header row is shaded")
+        XCTAssertEqual(rows.map(\.1), [true, false], "only the first row has a line above")
+        XCTAssertEqual(rows.map(\.2), [0, Double(RichTextTheme.default.blockSpacing)], "the space after the table is outside the grid")
+        XCTAssertEqual(rows.map(\.3), [3, 3], "an edge left of each column and one at the right")
+    }
+
     // A style change recolors the tags in place: the text and its tags stay, the colors change.
     func testRecolorChangesThePaletteColorsInPlace() {
         let text = build("```swift\nlet x\n```\n\n[go](https://swift.org) and `code`")
