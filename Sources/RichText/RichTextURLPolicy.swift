@@ -8,7 +8,11 @@
 // would be cached and embedded as a data: URI when the user copies the document). Only explicit, absolute,
 // allow-listed schemes pass; scheme-less/relative strings are rejected (we never guess a base).
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// When a document's REMOTE images (http / https) are fetched. Fetching is itself a disclosure: the request
 /// tells the image's host that this document was rendered, from which address, and anything the URL carries

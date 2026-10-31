@@ -46,7 +46,7 @@ final class RichTextSerializerTests: XCTestCase {
     func testHTMLEmbedsImageAsDataURIWhenResolved() {
         let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A])
         let resolver: RichTextImageResolver = { url in
-            url == "https://x.test/cat.png" ? RichTextInlineImage(data: bytes, format: .png, displaySize: CGSize(width: 40, height: 30)) : nil
+            url == "https://x.test/cat.png" ? RichTextInlineImage(data: bytes, format: .png, displaySize: RichTextImageSize(width: 40, height: 30)) : nil
         }
         let html = RichTextHTMLSerializer.fragment(from: imageDoc, images: resolver)
         XCTAssertTrue(html.contains("src=\"data:image/png;base64," + bytes.base64EncodedString()),
@@ -55,7 +55,7 @@ final class RichTextSerializerTests: XCTestCase {
 
     func testHTMLEmbedsJPEGWithJPEGMimeType() {
         let bytes = Data([0xFF, 0xD8, 0xFF, 0xE0])
-        let resolver: RichTextImageResolver = { _ in RichTextInlineImage(data: bytes, format: .jpeg, displaySize: CGSize(width: 40, height: 30)) }
+        let resolver: RichTextImageResolver = { _ in RichTextInlineImage(data: bytes, format: .jpeg, displaySize: RichTextImageSize(width: 40, height: 30)) }
         let html = RichTextHTMLSerializer.fragment(from: imageDoc, images: resolver)
         XCTAssertTrue(html.contains("src=\"data:image/jpeg;base64," + bytes.base64EncodedString()),
                       "expected a JPEG data: URI (photos stay compact), got \(html)")
@@ -64,7 +64,7 @@ final class RichTextSerializerTests: XCTestCase {
     func testHTMLEmbedsGIFWithGIFMimeType() {
         // An animated GIF travels unchanged in HTML (data:image/gif) - HTML targets keep the animation.
         let bytes = Data([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])   // GIF89a
-        let resolver: RichTextImageResolver = { _ in RichTextInlineImage(data: bytes, format: .gif, displaySize: CGSize(width: 20, height: 20)) }
+        let resolver: RichTextImageResolver = { _ in RichTextInlineImage(data: bytes, format: .gif, displaySize: RichTextImageSize(width: 20, height: 20)) }
         let html = RichTextHTMLSerializer.fragment(from: imageDoc, images: resolver)
         XCTAssertTrue(html.contains("src=\"data:image/gif;base64," + bytes.base64EncodedString()),
                       "expected a GIF data: URI, got \(html)")
@@ -85,6 +85,8 @@ final class RichTextSerializerTests: XCTestCase {
         }
     }
 
+    // RTF is built on Apple platforms only: GTK programs take HTML.
+    #if !os(Linux)
     func testRTFContainsRealTableAndStyles() {
         let rtf = RichTextRTFSerializer.string(from: richDoc)
         for needle in ["\\rtf1", "\\trowd", "\\cellx", "\\intbl", "\\cell", "\\row", "HYPERLINK"] {
@@ -99,6 +101,7 @@ final class RichTextSerializerTests: XCTestCase {
         let rtf = RichTextRTFSerializer.string(from: doc)
         XCTAssertTrue(rtf.contains("a \\{b\\} \\\\ c"))
     }
+    #endif
 
     // MARK: - URL policy (link scheme gating at the serialize boundary)
 
@@ -110,6 +113,7 @@ final class RichTextSerializerTests: XCTestCase {
         XCTAssertFalse(html.contains("javascript:"), "javascript: url must not survive into HTML")
     }
 
+    #if !os(Linux)
     func testRTFJavascriptLinkHasNoHyperlink() {
         let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("click")], url: "javascript:alert(1)")])])
         let rtf = RichTextRTFSerializer.string(from: doc)
@@ -118,10 +122,15 @@ final class RichTextSerializerTests: XCTestCase {
         XCTAssertFalse(rtf.contains("javascript:"), "javascript: url must not survive into RTF")
     }
 
-    func testHTTPLinkStillEmitsHrefAndHyperlink() {
+    func testHTTPLinkStillEmitsHyperlink() {
+        let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("go")], url: "https://swift.org")])])
+        XCTAssertTrue(RichTextRTFSerializer.string(from: doc).contains("HYPERLINK \"https://swift.org\""))
+    }
+    #endif
+
+    func testHTTPLinkStillEmitsHref() {
         let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("go")], url: "https://swift.org")])])
         XCTAssertTrue(RichTextHTMLSerializer.fragment(from: doc).contains("<a href=\"https://swift.org\""))
-        XCTAssertTrue(RichTextRTFSerializer.string(from: doc).contains("HYPERLINK \"https://swift.org\""))
     }
 
     // MARK: - Code-fence language sanitization (HTML injection)
@@ -172,11 +181,30 @@ final class RichTextSerializerTests: XCTestCase {
 
     // MARK: - RTF non-BMP (astral) escaping
 
+    #if !os(Linux)
     func testRTFEmojiEmitsSurrogatePair() {
         // U+1F600 has no single RTF escape word; it must become the UTF-16 surrogate pair D83D DE00, each as a
         // signed \u word (-10179 and -8704), instead of collapsing to a bare '?'.
         let doc = RichTextDocument(blocks: [.paragraph([.text("\u{1F600}")])])
         let rtf = RichTextRTFSerializer.string(from: doc)
         XCTAssertTrue(rtf.contains("\\u-10179 ?\\u-8704 ?"), "expected surrogate-pair \\u words, got \(rtf)")
+    }
+    #endif
+
+    // MARK: - Escaping by Unicode scalar
+
+    // A combining mark after a quote or "<" makes one Character with it; the quote must still be escaped, or
+    // alt text closes its attribute and adds one of its own (an event handler) in the pasted HTML.
+    func testHTMLEscapesQuoteAndBracketBeforeACombiningMark() {
+        let alt = "x\"\u{301} onerror=alert(1) <\u{301}b>"
+        let doc = RichTextDocument(blocks: [.paragraph([.image(alt: alt, url: "https://x.test/cat.png")])])
+        let html = RichTextHTMLSerializer.fragment(from: doc)
+        XCTAssertTrue(html.contains("alt=\"x&quot;\u{301} onerror=alert(1) &lt;\u{301}b&gt;\""), html)
+        XCTAssertEqual(html.unicodeScalars.filter { $0 == "\"" }.count, 6, "only the attribute delimiters: \(html)")
+    }
+
+    func testHTMLEscapesBracketBeforeACombiningMarkInText() {
+        let doc = RichTextDocument(blocks: [.paragraph([.text("a <\u{301}b> & c")])])
+        XCTAssertEqual(RichTextHTMLSerializer.fragment(from: doc), "<p>a &lt;\u{301}b&gt; &amp; c</p>")
     }
 }

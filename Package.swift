@@ -6,10 +6,81 @@
 // (iOS / iPadOS / macOS / visionOS) on TextKit 2, with table-aware copy serialization (RTF / HTML /
 // Markdown) so content round-trips off iOS even though iOS TextKit has no native table model.
 //
+// On Linux the same RichText module is built from the platform-independent layers: the document model,
+// the Markdown parser and autolinker, the URL policy, the Markdown and HTML serializers and the
+// accessibility text, over FoundationEssentials only. The Apple renderer (TextKit, SwiftUI, AppKit/UIKit)
+// and the RTF serializer are not compiled; GTK programs take HTML.
+//
 // See Private/ios-richtext-view-design.md for the investigation and the phased plan (P0-P6).
 
 import PackageDescription
 
+#if os(Linux)
+import Foundation
+
+// Every path under `target` except those in `kept` and the folders that lead to them: an exclude list that
+// leaves only `kept` in the target, so a new Apple-only file needs no change here.
+func excludingAllBut(_ kept: [String], in target: String) -> [String] {
+    let root = Context.packageDirectory + "/" + target
+    func walk(_ relative: String) -> [String] {
+        let folder = relative.isEmpty ? root : root + "/" + relative
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []
+        var excluded: [String] = []
+        for entry in entries.sorted() {
+            let path = relative.isEmpty ? entry : relative + "/" + entry
+            if kept.contains(path) {
+                continue
+            }
+            if kept.contains(where: { $0.hasPrefix(path + "/") }) {
+                excluded += walk(path)
+            } else {
+                excluded.append(path)
+            }
+        }
+        return excluded
+    }
+    return walk("")
+}
+
+// The platform-independent sources, the only ones built on Linux.
+let portableSources = [
+    "Markdown",
+    "Model/RichTextModel.swift",
+    "Rendering/RichTextAccessibility.swift",
+    "RichTextURLPolicy.swift",
+    "Serialization/RichTextHTMLSerializer.swift",
+    "Serialization/RichTextInlineImage.swift",
+    "Serialization/RichTextMarkdownSerializer.swift",
+]
+// The tests of those sources (their Apple-only cases are behind #if !os(Linux)).
+let portableTests = [
+    "RichTextAccessibilityTests.swift",
+    "RichTextFixtureEmitterTests.swift",
+    "RichTextMarkdownParserTests.swift",
+    "RichTextSerializerTests.swift",
+    "RichTextURLPolicyTests.swift",
+]
+
+let package = Package(
+    name: "RichText",
+    products: [
+        .library(name: "RichText", targets: ["RichText"]),
+    ],
+    targets: [
+        .target(
+            name: "RichText",
+            exclude: excludingAllBut(portableSources, in: "Sources/RichText"),
+            sources: portableSources
+        ),
+        .testTarget(
+            name: "RichTextTests",
+            dependencies: ["RichText"],
+            exclude: excludingAllBut(portableTests, in: "Tests/RichTextTests"),
+            sources: portableTests
+        ),
+    ]
+)
+#else
 let package = Package(
     name: "RichText",
     platforms: [
@@ -32,3 +103,4 @@ let package = Package(
         .testTarget(name: "RichTextTests", dependencies: ["RichText"]),
     ]
 )
+#endif

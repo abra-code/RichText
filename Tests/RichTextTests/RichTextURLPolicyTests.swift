@@ -40,8 +40,9 @@ final class RichTextURLPolicyTests: XCTestCase {
         XCTAssertFalse(RichTextURLPolicy.allowsImage(URL(string: "javascript:alert(1)")!))
     }
 
-    // MARK: - Render boundary (attributed string)
+    // MARK: - Render boundary (attributed string, Apple platforms)
 
+    #if !os(Linux)
     func testJavascriptLinkIsNotTappable() {
         let doc = RichTextDocument(blocks: [.paragraph([.link(text: [.text("tap")], url: "javascript:alert(1)")])])
         let attributed = RichTextAttributedString.make(doc)
@@ -62,4 +63,5 @@ final class RichTextURLPolicyTests: XCTestCase {
         }
         XCTAssertEqual(linkURL, URL(string: "https://swift.org"), "an allow-listed link stays tappable")
     }
+    #endif
 }

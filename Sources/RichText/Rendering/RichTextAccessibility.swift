@@ -8,7 +8,11 @@
 // row by row with comma-separated cells so columns don't run together. The SwiftUI view exposes this as a
 // single static-text accessibility element (see RichText.body).
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 enum RichTextAccessibility {
 
@@ -25,7 +29,7 @@ enum RichTextAccessibility {
             case .heading(_, let inlines), .paragraph(let inlines):
                 lines.append(inlines.plainText)
             case .codeBlock(_, let code):
-                lines.append(code.trimmingCharacters(in: .newlines))
+                lines.append(trimmingNewlines(code))
             case .blockQuote(let children):
                 append(children, into: &lines)
             case .list(_, _, _, let items):
@@ -47,5 +51,22 @@ enum RichTextAccessibility {
     // the tab-separated cells together.
     private static func rowText(_ cells: [[RichTextInline]]) -> String {
         cells.map { $0.plainText }.joined(separator: ", ")
+    }
+
+    // `text` without leading and trailing line breaks, as trimmingCharacters(in: .newlines) gives (which is
+    // not in FoundationEssentials): CharacterSet.newlines is U+000A-U+000D, U+0085, U+2028 and U+2029.
+    private static func trimmingNewlines(_ text: String) -> String {
+        func isNewline(_ scalar: Unicode.Scalar) -> Bool {
+            switch scalar.value {
+            case 0x0A...0x0D, 0x85, 0x2028, 0x2029: return true
+            default: return false
+            }
+        }
+        let scalars = text.unicodeScalars
+        guard let first = scalars.firstIndex(where: { !isNewline($0) }),
+              let last = scalars.lastIndex(where: { !isNewline($0) }) else {
+            return ""
+        }
+        return String(String.UnicodeScalarView(scalars[first...last]))
     }
 }

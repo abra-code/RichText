@@ -7,7 +7,11 @@
 // light-mode hexes - a pasted document is static, so it cannot track the system appearance the way the
 // on-screen view does.
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public enum RichTextHTMLSerializer {
 
@@ -157,13 +161,27 @@ public enum RichTextHTMLSerializer {
     }
 
     private static func escape(_ s: String) -> String {
-        return s.replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
+        return escape(s, quotes: false)
     }
 
     private static func escapeAttribute(_ s: String) -> String {
-        return escape(s).replacingOccurrences(of: "\"", with: "&quot;")
+        return escape(s, quotes: true)
+    }
+
+    // One pass over the Unicode SCALARS, not the Characters: a combining mark after "<" makes one Character
+    // that is not equal to "<", and its "<" must still be escaped (else it opens a tag in the pasted HTML).
+    private static func escape(_ s: String, quotes: Bool) -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars {
+            switch scalar {
+            case "&": out.append(contentsOf: "&amp;".unicodeScalars)
+            case "<": out.append(contentsOf: "&lt;".unicodeScalars)
+            case ">": out.append(contentsOf: "&gt;".unicodeScalars)
+            case "\"" where quotes: out.append(contentsOf: "&quot;".unicodeScalars)
+            default: out.append(scalar)
+            }
+        }
+        return String(out)
     }
 
     // A code-fence language is emitted into a `language-...` CSS class. Keep only characters valid in a

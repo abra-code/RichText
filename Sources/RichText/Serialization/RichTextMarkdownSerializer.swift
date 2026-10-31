@@ -2,7 +2,11 @@
 //
 // Model -> Markdown. The inverse of the parser; used for plain round-trip on the pasteboard.
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public enum RichTextMarkdownSerializer {
 
