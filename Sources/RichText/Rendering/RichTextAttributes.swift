@@ -50,31 +50,6 @@ final class RichTextTableRowInfo {
     }
 }
 
-/// Visual metrics + colors. Cross-platform; `NSColor` and `UIColor` name semantic colors differently.
-public struct RichTextTheme: Sendable, Equatable {
-    public var baseFontSize: CGFloat?      // nil => Dynamic Type body
-    public var indentStep: CGFloat
-    public var blockSpacing: CGFloat
-    public var listSpacing: CGFloat
-    public var codeCornerRadius: CGFloat
-    public var cellPadding: CGFloat
-    public var syntaxHighlighting: Bool    // color fenced code blocks by language
-
-    public init(baseFontSize: CGFloat? = nil, indentStep: CGFloat = 22, blockSpacing: CGFloat = 9,
-                listSpacing: CGFloat = 3, codeCornerRadius: CGFloat = 6, cellPadding: CGFloat = 6,
-                syntaxHighlighting: Bool = true) {
-        self.baseFontSize = baseFontSize
-        self.indentStep = indentStep
-        self.blockSpacing = blockSpacing
-        self.listSpacing = listSpacing
-        self.codeCornerRadius = codeCornerRadius
-        self.cellPadding = cellPadding
-        self.syntaxHighlighting = syntaxHighlighting
-    }
-
-    public static let `default` = RichTextTheme()
-}
-
 enum RTVColors {
     static var label: RTVColor {
         #if canImport(AppKit)

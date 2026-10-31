@@ -1,0 +1,4 @@
+module CRichTextGtk [system] {
+    header "CRichTextGtk.h"
+    export *
+}

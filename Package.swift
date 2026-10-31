@@ -8,8 +8,9 @@
 //
 // On Linux the same RichText module is built from the platform-independent layers: the document model,
 // the Markdown parser and autolinker, the URL policy, the Markdown and HTML serializers, the syntax
-// highlighter's tokenizer and the accessibility text, over FoundationEssentials only. The Apple renderer
-// (TextKit, SwiftUI, AppKit/UIKit) and the RTF serializer are not compiled; GTK programs take HTML.
+// highlighter's tokenizer and the accessibility text, over FoundationEssentials only, plus a GTK 4 renderer
+// (Gtk/: the document in one GtkTextView). The Apple renderer (TextKit, SwiftUI, AppKit/UIKit) and the RTF
+// serializer are not compiled; GTK programs take HTML.
 //
 // See Private/ios-richtext-view-design.md for the investigation and the phased plan (P0-P6).
 
@@ -42,10 +43,12 @@ func excludingAllBut(_ kept: [String], in target: String) -> [String] {
     return walk("")
 }
 
-// The platform-independent sources, the only ones built on Linux.
+// The platform-independent sources and the GTK renderer (Gtk/), the only ones built on Linux.
 let portableSources = [
+    "Gtk",
     "Markdown",
     "Model/RichTextModel.swift",
+    "Model/RichTextTheme.swift",
     "Rendering/RichTextAccessibility.swift",
     "Rendering/RichTextSyntaxTokenizer.swift",
     "RichTextURLPolicy.swift",
@@ -53,8 +56,9 @@ let portableSources = [
     "Serialization/RichTextInlineImage.swift",
     "Serialization/RichTextMarkdownSerializer.swift",
 ]
-// The tests of those sources (their Apple-only cases are behind #if !os(Linux)).
+// The tests of those sources (their Apple-only cases are behind #if !os(Linux)) and of the GTK renderer.
 let portableTests = [
+    "Gtk",
     "RichTextAccessibilityTests.swift",
     "RichTextFixtureEmitterTests.swift",
     "RichTextMarkdownParserTests.swift",
@@ -69,14 +73,17 @@ let package = Package(
         .library(name: "RichText", targets: ["RichText"]),
     ],
     targets: [
+        // GTK 4's C API (GtkTextView, GtkTextBuffer, Pango), for the renderer.
+        .systemLibrary(name: "CRichTextGtk", pkgConfig: "gtk4"),
         .target(
             name: "RichText",
+            dependencies: ["CRichTextGtk"],
             exclude: excludingAllBut(portableSources, in: "Sources/RichText"),
             sources: portableSources
         ),
         .testTarget(
             name: "RichTextTests",
-            dependencies: ["RichText"],
+            dependencies: ["RichText", "CRichTextGtk"],
             exclude: excludingAllBut(portableTests, in: "Tests/RichTextTests"),
             sources: portableTests
         ),
@@ -100,9 +107,10 @@ let package = Package(
     targets: [
         .target(
             name: "RichText",
-            dependencies: [.product(name: "AsyncImageCache", package: "AsyncImageCache")]
+            dependencies: [.product(name: "AsyncImageCache", package: "AsyncImageCache")],
+            exclude: ["Gtk"]   // the Linux renderer
         ),
-        .testTarget(name: "RichTextTests", dependencies: ["RichText"]),
+        .testTarget(name: "RichTextTests", dependencies: ["RichText"], exclude: ["Gtk"]),
     ]
 )
 #endif
