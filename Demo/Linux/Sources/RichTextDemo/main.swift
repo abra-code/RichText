@@ -66,12 +66,19 @@ func greet(_ name: String) -> String {
 That is all.
 """
 
-// The shared Markdown fixtures (Fixtures/markdown), found from this source file's place in the repository.
+// The shared Markdown fixtures (Fixtures/markdown): beside the program when it was copied elsewhere with them,
+// otherwise found from this source file's place in the repository.
 func fixtureDocuments() -> [(name: String, markdown: String)] {
-    let folder = URL(fileURLWithPath: #filePath)
+    let besideProgram = Bundle.main.executableURL?.deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/markdown", isDirectory: true)
+    let inRepository = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()   // Demo/Linux
         .deletingLastPathComponent().deletingLastPathComponent()                               // repository
         .appendingPathComponent("Fixtures/markdown", isDirectory: true)
+    var isFolder: ObjCBool = false
+    let folder = besideProgram.flatMap {
+        FileManager.default.fileExists(atPath: $0.path, isDirectory: &isFolder) && isFolder.boolValue ? $0 : nil
+    } ?? inRepository
     let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
     return names.filter { $0.hasSuffix(".md") }.sorted().compactMap { name in
         guard let text = try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8) else {
