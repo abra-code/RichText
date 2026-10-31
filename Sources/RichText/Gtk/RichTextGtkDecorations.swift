@@ -127,6 +127,11 @@ extension RichTextGtkView {
         gtk_text_view_get_line_at_y(textViewPointer, &iter, visible.y + visible.height, &lineTop)
         gtk_text_iter_forward_line(&iter)
         let lastShown = Int(gtk_text_iter_get_offset(&iter))
+        // GTK lays a new text out in the background, and a line not laid out yet has no height: a shape on it, or
+        // below it, would be missing or misplaced. GTK does not redraw when it is done, so ask for a redraw then.
+        if !linesLaidOut(from: firstShown, to: lastShown, in: buffer) {
+            redrawAfterLayout()
+        }
 
         for decoration in builder.decorations
         where decoration.range.upperBound > firstShown && decoration.range.lowerBound <= lastShown {
@@ -141,22 +146,44 @@ extension RichTextGtkView {
             case .quoteBar(let x):
                 fill(snapshot, x: x, y: top, width: 3, height: bottom - top, radius: 1.5, color: palette.separator)
             case .tableRow(let edges, let header, let firstRow):
-                guard let left = edges.first, let right = edges.last else {
+                guard let left = edges.first, let tableRight = edges.last else {
+                    continue
+                }
+                // A table whose last cell is wider than the view has room for ends at the view's right edge, where
+                // that cell wraps.
+                let right = min(tableRight, Double(visible.x + visible.width) - 1)
+                guard right > left else {
                     continue
                 }
                 if header {
                     fill(snapshot, x: left, y: top, width: right - left, height: bottom - top, color: palette.codeFill)
                 }
                 // One-pixel lines on whole pixels, as the Apple renderer strokes them.
-                for edge in edges {
+                for edge in edges.dropLast() where edge.rounded() < right.rounded() {
                     fill(snapshot, x: edge.rounded(), y: top, width: 1, height: bottom - top, color: palette.separator)
                 }
+                fill(snapshot, x: right.rounded(), y: top, width: 1, height: bottom - top, color: palette.separator)
                 if firstRow {
                     fill(snapshot, x: left, y: top.rounded(), width: right - left, height: 1, color: palette.separator)
                 }
                 fill(snapshot, x: left, y: bottom.rounded(), width: right - left + 1, height: 1, color: palette.separator)
             }
         }
+    }
+
+    // Whether every line from `start` to `end` (character offsets) has its height: every laid-out line has one.
+    private func linesLaidOut(from start: Int, to end: Int, in buffer: UnsafeMutablePointer<GtkTextBuffer>) -> Bool {
+        var iter = GtkTextIter()
+        gtk_text_buffer_get_iter_at_offset(buffer, &iter, Int32(start))
+        var y: Int32 = 0
+        var height: Int32 = 0
+        repeat {
+            gtk_text_view_get_line_yrange(textViewPointer, &iter, &y, &height)
+            if height <= 0 {
+                return false
+            }
+        } while Int(gtk_text_iter_get_offset(&iter)) < end && gtk_text_iter_forward_line(&iter) != 0
+        return true
     }
 
     // From the top of the paragraph's first line to the bottom of its last, less the spacing outside the shape.

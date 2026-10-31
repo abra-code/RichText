@@ -305,5 +305,51 @@
         ]
       ]
     ]
+  },
+  {
+    "type": "paragraph",
+    "inlines": [
+      {
+        "type": "text",
+        "value": "A long last cell wraps within its column:"
+      }
+    ]
+  },
+  {
+    "type": "table",
+    "headers": [
+      [
+        {
+          "type": "text",
+          "value": "Term"
+        }
+      ],
+      [
+        {
+          "type": "text",
+          "value": "Meaning"
+        }
+      ]
+    ],
+    "alignments": [
+      "none",
+      "none"
+    ],
+    "rows": [
+      [
+        [
+          {
+            "type": "text",
+            "value": "wrap"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "value": "A note long enough to need more than one line, so the row grows taller and its wrapped lines start under the column instead of at the left edge of the table."
+          }
+        ]
+      ]
+    ]
   }
 ]

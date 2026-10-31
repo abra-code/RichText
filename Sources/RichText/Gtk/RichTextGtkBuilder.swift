@@ -252,8 +252,9 @@ final class RichTextGtkBuilder {
 
     // MARK: - Tables
 
-    // Tab-stop rows with content-sized columns (the TextKit 2 layout on Apple platforms): cells are single
-    // lines; the header row is bold. The grid and the header's fill are painted (a tableRow decoration).
+    // Tab-stop rows with content-sized columns (Apple's tab-stop tables): cells are single lines, but for the last
+    // column's, which may grow to the view's right edge and wrap there (macOS's tables use the width as well);
+    // the header row is bold. The grid and the header's fill are painted (a tableRow decoration).
     private func appendTable(headers: [[RichTextInline]], alignments: [RichTextColumnAlignment],
                              rows: [[[RichTextInline]]], indent: Double, secondary: Bool) {
         let columns = max(headers.count, rows.map(\.count).max() ?? 0)
@@ -273,6 +274,10 @@ final class RichTextGtkBuilder {
             edges.append(edges[edges.count - 1] + padding * 2 + width)
         }
         let tabs = tableTabs(edges: edges, alignments: alignments, padding: padding)
+        // A row starts at the left (its cells are placed by the tabs); a last cell wider than the view has room for
+        // wraps at the view's right edge, less the cell's padding, and its wrapped lines hang at the last column
+        // (whole pixels, as the tab stops). The grid's right line then follows the view (paintDecorations).
+        let wrap = newTag([("indent", .int(-Int32(edges[columns - 1] + padding))), ("right-margin", .int(Int32(padding)))])
 
         for (rowIndex, (cells, header)) in allRows.enumerated() {
             let start = offset
@@ -281,7 +286,7 @@ final class RichTextGtkBuilder {
                 appendInlines(column < cells.count ? cells[column] : [], style: InlineStyle(bold: header, secondary: secondary))
             }
             let below = rowIndex == allRows.count - 1 ? theme.blockSpacing : 0
-            paragraphEnd(start: start, tags: [tabs], below: below)
+            paragraphEnd(start: start, tags: [tabs, wrap], below: below)
             decorations.append(RichTextGtkDecoration(kind: .tableRow(edges: edges, header: header, firstRow: rowIndex == 0),
                                                      range: start..<offset, spacingBelow: Double(below)))
         }

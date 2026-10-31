@@ -33,6 +33,62 @@ final class RichTextGtkViewTests: XCTestCase {
         XCTAssertNil(view.link(atOffset: 0))
     }
 
+    // A table's long last cell grows to the view's right edge and wraps there, as macOS's tables use the width:
+    // its wrapped lines hang at the column, and a narrower view wraps it sooner.
+    func testLongLastTableCellWrapsAtTheViewsEdge() throws {
+        let long = Array(repeating: "wrapping words", count: 20).joined(separator: " ")
+        let window = gtk_window_new()!
+        let gtkWindow = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
+        gtk_window_set_default_size(gtkWindow, 900, 400)
+        let view = RichTextGtkView(markdown: "| Key | Note |\n| --- | --- |\n| a | \(long) |")
+        gtk_window_set_child(gtkWindow, UnsafeMutableRawPointer(view.widget).assumingMemoryBound(to: GtkWidget.self))
+        gtk_window_present(gtkWindow)
+        defer {
+            gtk_window_destroy(gtkWindow)
+        }
+        pump(milliseconds: 500)
+
+        let buffer = try XCTUnwrap(gtk_text_view_get_buffer(view.textViewPointer))
+        let text = view.text
+        let cellStart = text.unicodeScalars.distance(from: text.unicodeScalars.startIndex,
+                                                     to: try XCTUnwrap(text.range(of: "wrapping")).lowerBound)
+        let padding = Int32(RichTextTheme.default.cellPadding)
+        // Where the cell starts, where its first line ends, its last character, the start of the last line, and
+        // the view's right edge.
+        func measure() -> (firstX: Int32, firstY: Int32, firstEnd: Int32, lastY: Int32, lastX: Int32, lastLineX: Int32, right: Int32) {
+            var iter = GtkTextIter()
+            var rect = GdkRectangle()
+            gtk_text_buffer_get_iter_at_offset(buffer, &iter, Int32(cellStart))
+            gtk_text_view_get_iter_location(view.textViewPointer, &iter, &rect)
+            let firstX = rect.x
+            let firstY = rect.y
+            gtk_text_view_forward_display_line_end(view.textViewPointer, &iter)
+            gtk_text_view_get_iter_location(view.textViewPointer, &iter, &rect)
+            let firstEnd = rect.x
+            gtk_text_buffer_get_iter_at_offset(buffer, &iter, Int32(text.unicodeScalars.count - 1))
+            gtk_text_view_get_iter_location(view.textViewPointer, &iter, &rect)
+            let last = rect
+            gtk_text_view_backward_display_line_start(view.textViewPointer, &iter)
+            gtk_text_view_get_iter_location(view.textViewPointer, &iter, &rect)
+            var visible = GdkRectangle()
+            gtk_text_view_get_visible_rect(view.textViewPointer, &visible)
+            return (firstX, firstY, firstEnd, last.y, last.x, rect.x, visible.x + visible.width)
+        }
+
+        let wide = measure()
+        XCTAssertGreaterThan(wide.firstEnd - wide.firstX, 320, "the column uses the width, not a fixed 320")
+        XCTAssertLessThanOrEqual(wide.firstEnd, wide.right - padding, "and wraps inside the view's right edge")
+        XCTAssertGreaterThan(wide.lastY, wide.firstY, "onto more lines")
+        XCTAssertEqual(wide.lastLineX, wide.firstX, "a wrapped line hangs at the last column")
+
+        gtk_window_set_default_size(gtkWindow, 600, 400)
+        pump(milliseconds: 500)
+        let narrow = measure()
+        XCTAssertLessThan(narrow.right, wide.right)
+        XCTAssertLessThanOrEqual(narrow.firstEnd, narrow.right - padding, "a narrower view wraps it sooner")
+        XCTAssertGreaterThan(narrow.lastY, wide.lastY)
+    }
+
     // A plain GTK program's switch to dark (GtkSettings) recolors the shown text in place.
     func testDarkPreferenceRecolors() throws {
         let settings = try XCTUnwrap(gtk_settings_get_default())

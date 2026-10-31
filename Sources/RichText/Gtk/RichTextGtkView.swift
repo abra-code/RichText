@@ -66,6 +66,8 @@ public final class RichTextGtkView {
     private var settingsHandlers: [gulong] = []
     private(set) var links: [RichTextGtkLink] = []
     private(set) var imageSlots: [RichTextGtkImageSlot] = []
+    private var layoutRedrawPending = false
+    private var layoutRedraws = 0              // for the shown document: a bound, should a line never get a height
     /// The find controller bound to this view (RichTextGtkFindController.bind(view:)), told when the text changes.
     weak var findController: RichTextGtkFindController?
 
@@ -150,6 +152,7 @@ public final class RichTextGtkView {
         for slot in imageSlots {
             slot.start(policy: remoteImages)
         }
+        layoutRedraws = 0
         findController?.textChanged()
     }
 
@@ -157,6 +160,43 @@ public final class RichTextGtkView {
         var foreground = GdkRGBA()
         gtk_widget_get_color(widgetPointer, &foreground)
         return RichTextGtkPalette(foreground: foreground)
+    }
+
+    // MARK: - Redraw after layout
+
+    // A redraw once GTK has laid the text out (an idle below its layout work's priority), for decorations that were
+    // painted while lines still had no height. One at a time, and at most 20 for a document.
+    func redrawAfterLayout() {
+        guard !layoutRedrawPending, layoutRedraws < 20 else {
+            return
+        }
+        layoutRedrawPending = true
+        layoutRedraws += 1
+        let box = Unmanaged.passRetained(WeakView(self)).toOpaque()
+        g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, { data in
+            guard let data else {
+                return 0
+            }
+            nonisolated(unsafe) let box = Unmanaged<WeakView>.fromOpaque(data).takeUnretainedValue()
+            MainActor.assumeIsolated {
+                if let view = box.view {
+                    view.layoutRedrawPending = false
+                    gtk_widget_queue_draw(view.widgetPointer)
+                }
+            }
+            return 0
+        }, box, { data in
+            if let data {
+                Unmanaged<WeakView>.fromOpaque(data).release()
+            }
+        })
+    }
+
+    private final class WeakView {
+        weak var view: RichTextGtkView?
+        init(_ view: RichTextGtkView) {
+            self.view = view
+        }
     }
 
     // MARK: - Find

@@ -60,7 +60,7 @@ On Linux the same `RichText` module builds over GTK 4 (`gtk4`, through pkg-confi
 - **`RichTextGtkView`** shows a document in one read-only GtkTextView, selectable and copyable as a unit: headings, inline styles, code blocks colored by the same syntax highlighter on rounded cards, quotes with their bar, lists, rules, tab-stop tables with their grid, links that open on a click, and images loading through AsyncImageCache under `remoteImages`. Colors follow the GTK style, light and dark; a libadwaita host calls `refreshColors()` when its style changes. Pad its sides with the widget's margins (the document's indents replace the text view's left and right margins); its top and bottom margins are free to use.
 - **Find:** `RichTextSearch` on Linux has the same options, over GLib (case folding, normalization, and GRegex, which is PCRE2, for regular expressions), with ranges in Unicode scalars, the GtkTextBuffer's character offsets. `RichTextGtkFindController` and `RichTextGtkFindBar` (a GtkSearchBar the host places above its scrolled window, with Ctrl+F and Ctrl+G) mirror the Apple controller and bar.
 - **Copy as rich text:** `RichTextGtkClipboard.write(_:)` puts HTML (loaded images embedded) and Markdown on the clipboard. There is no RTF on Linux; GTK programs take HTML.
-- Not on Linux yet: wrapping table cells.
+- **Tables:** a long last cell grows to the view's width and wraps there, its wrapped lines under its column, as macOS's tables use the width; the other cells stay single lines (macOS's native tables wrap them too).
 
 `Demo/Linux` is a small GTK program with a sample document, local and remote images, the shared Markdown fixtures, the find bar, the remote-image policy and copy as rich text: `cd Demo/Linux && swift run RichTextDemo`.
 

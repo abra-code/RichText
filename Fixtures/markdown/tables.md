@@ -25,3 +25,9 @@ A ragged row shorter than the header:
 | --- | --- | --- |
 | only one |
 | two | cells |
+
+A long last cell wraps within its column:
+
+| Term | Meaning |
+| --- | --- |
+| wrap | A note long enough to need more than one line, so the row grows taller and its wrapped lines start under the column instead of at the left edge of the table. |

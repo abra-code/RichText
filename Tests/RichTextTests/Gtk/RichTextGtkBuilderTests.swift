@@ -284,6 +284,24 @@ final class RichTextGtkBuilderTests: XCTestCase {
         XCTAssertEqual(rows.map(\.3), [3, 3], "an edge left of each column and one at the right")
     }
 
+    // The last column is as wide as its text (the view's edge limits it when shown); its rows hang their wrapped
+    // lines at the column and keep the cell's padding at the right.
+    func testTheLastTableColumnHangsAtItsColumn() throws {
+        let long = Array(repeating: "wrapping words", count: 20).joined(separator: " ")
+        let text = build("| Key | Note |\n| --- | --- |\n| a | \(long) |")
+        let builder = try XCTUnwrap(lastBuilder)
+        guard case .tableRow(let edges, _, _) = try XCTUnwrap(builder.decorations.last).kind else {
+            return XCTFail("no table row")
+        }
+        let padding = Double(RichTextTheme.default.cellPadding)
+        XCTAssertGreaterThan(edges[2] - edges[1], 600, "no fixed cap: the column is as wide as its text")
+        let cell = offset(of: "wrapping", in: text)
+        XCTAssertEqual(tagProperty("indent", at: cell) { g_value_get_int($0) }, -Int32(edges[1] + padding),
+                       "wrapped lines hang at the last column")
+        XCTAssertEqual(tagProperty("right-margin", at: cell) { g_value_get_int($0) }, Int32(padding),
+                       "a wrapped cell keeps its padding at the view's right edge")
+    }
+
     // A style change recolors the tags in place: the text and its tags stay, the colors change.
     func testRecolorChangesThePaletteColorsInPlace() {
         let text = build("```swift\nlet x\n```\n\n[go](https://swift.org) and `code`")
