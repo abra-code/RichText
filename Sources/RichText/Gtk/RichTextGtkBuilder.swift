@@ -146,7 +146,7 @@ final class RichTextGtkBuilder {
         switch block {
         case .heading(let level, let inlines):
             let start = offset
-            appendInlines(inlines, style: InlineStyle(bold: true, secondary: secondary))
+            appendInlines(inlines, style: InlineStyle(bold: true, secondary: secondary, heading: level))
             paragraphEnd(start: start, tags: [headingTag(level), marginTag(left: indent)],
                          above: theme.blockSpacing * 0.6, below: theme.blockSpacing * 0.5)
 
@@ -393,6 +393,7 @@ final class RichTextGtkBuilder {
         var strike = false
         var secondary = false
         var link: URL?
+        var heading: Int?   // the level, inside a heading
     }
 
     private func appendInlines(_ nodes: [RichTextInline], style: InlineStyle) {
@@ -443,17 +444,18 @@ final class RichTextGtkBuilder {
         let start = offset
         insert(text)
         var runTags: [UnsafeMutablePointer<GtkTextTag>] = []
-        if style.bold {
+        // Code is regular whatever it sits in, as on Apple platforms: it takes no bold or italic tag.
+        if style.bold, !code {
             runTags.append(namedTag("bold", [("weight", .int(Int32(PANGO_WEIGHT_BOLD.rawValue)))]))
         }
-        if style.italic {
+        if style.italic, !code {
             runTags.append(namedTag("italic", [("style", .enumeration(pango_style_get_type(), Int32(PANGO_STYLE_ITALIC.rawValue)))]))
         }
         if style.strike {
             runTags.append(namedTag("strike", [("strikethrough", .boolean(true))]))
         }
         if code {
-            runTags.append(codeTag())
+            runTags.append(codeTag(inHeading: style.heading))
         }
         if let link = style.link {
             runTags.append(namedTag("link", [("foreground-rgba", .rgba(palette.link)),
@@ -488,7 +490,7 @@ final class RichTextGtkBuilder {
             ("syntax-string", "foreground-rgba", palette.syntaxString),
             ("syntax-number", "foreground-rgba", palette.syntaxNumber),
             ("syntax-comment", "foreground-rgba", palette.syntaxComment),
-        ]
+        ] + (1...Self.headingScale.count).map { ("code-h\($0)", "background-rgba", palette.codeFill) }
         for (name, property, color) in colors {
             if let tag = tags[name] {
                 Self.set(tag, property, .rgba(color))
@@ -499,14 +501,25 @@ final class RichTextGtkBuilder {
     // MARK: - Tags
 
     private func headingTag(_ level: Int) -> UnsafeMutablePointer<GtkTextTag> {
-        let index = min(max(level, 1), 5) - 1
+        let index = min(max(level, 1), Self.headingScale.count) - 1
         let scale = Self.headingScale[index]
         return namedTag("h\(index + 1)", [("weight", .int(Int32(PANGO_WEIGHT_BOLD.rawValue))), sizeProperty(scale)])
     }
 
-    private func codeTag() -> UnsafeMutablePointer<GtkTextTag> {
-        namedTag("code", [("family", .string("monospace")), sizeProperty(Self.codeScale),
-                          ("background-rgba", .rgba(palette.codeFill))])
+    // Inline code is the body's monospaced size and regular weight wherever it is, as on Apple platforms (codeRun):
+    // in a heading, the regular weight overrides the heading tag's (made earlier, so lower in priority), and without
+    // a base size the scale cancels the heading's (GTK multiplies the scales of all a run's tags).
+    private func codeTag(inHeading level: Int? = nil) -> UnsafeMutablePointer<GtkTextTag> {
+        let regular: [(String, TagValue)] = [
+            ("family", .string("monospace")), ("background-rgba", .rgba(palette.codeFill)),
+            ("weight", .int(Int32(PANGO_WEIGHT_NORMAL.rawValue))),
+            ("style", .enumeration(pango_style_get_type(), Int32(PANGO_STYLE_NORMAL.rawValue))),
+        ]
+        guard let level, theme.baseFontSize == nil else {
+            return namedTag("code", regular + [sizeProperty(Self.codeScale)])
+        }
+        let index = min(max(level, 1), Self.headingScale.count) - 1
+        return namedTag("code-h\(index + 1)", regular + [("scale", .double(Self.codeScale / Self.headingScale[index]))])
     }
 
     // The card behind it is painted (a codeCard decoration).

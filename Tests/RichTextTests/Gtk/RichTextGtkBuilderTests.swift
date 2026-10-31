@@ -57,18 +57,23 @@ final class RichTextGtkBuilderTests: XCTestCase {
         return text.unicodeScalars.distance(from: text.unicodeScalars.startIndex, to: range.lowerBound)
     }
 
-    // The value of a property on any tag at `offset` whose "<name>-set" flag is on, or nil.
+    // The value of a property on the highest-priority tag at `offset` whose "<name>-set" flag is on, or nil.
     private func tagProperty<T>(_ name: String, at offset: Int, read: (UnsafeMutablePointer<GValue>) -> T) -> T? {
+        tagProperties(name, at: offset, read: read).last
+    }
+
+    // The values of a property on every tag at `offset` whose "<name>-set" flag is on, lowest priority first.
+    private func tagProperties<T>(_ name: String, at offset: Int, read: (UnsafeMutablePointer<GValue>) -> T) -> [T] {
         var iter = GtkTextIter()
         gtk_text_buffer_get_iter_at_offset(buffer, &iter, Int32(offset))
         guard let list = gtk_text_iter_get_tags(&iter) else {
-            return nil
+            return []
         }
         defer {
             g_slist_free(list)
         }
         var node: UnsafeMutablePointer<GSList>? = list
-        var found: T?
+        var found: [T] = []
         while let current = node {
             let object = current.pointee.data.assumingMemoryBound(to: GObject.self)
             if let spec = g_object_class_find_property(UnsafeMutableRawPointer(object.pointee.g_type_instance.g_class)
@@ -82,7 +87,7 @@ final class RichTextGtkBuilderTests: XCTestCase {
                     var value = GValue()
                     g_value_init(&value, spec.pointee.value_type)
                     g_object_get_property(object, name, &value)
-                    found = read(&value)
+                    found.append(read(&value))
                     g_value_unset(&value)
                 }
                 g_value_unset(&flag)
@@ -209,7 +214,24 @@ final class RichTextGtkBuilderTests: XCTestCase {
             let text = build(markdown, theme: theme)
             let size = tagProperty("size-points", at: offset(of: "x", in: text)) { g_value_get_double($0) }
             XCTAssertEqual(size ?? 0, 20 * RichTextGtkBuilder.codeScale, accuracy: 0.01, markdown)
+            XCTAssertEqual(weight(at: offset(of: "x", in: text)), Int32(PANGO_WEIGHT_NORMAL.rawValue), markdown)
         }
+    }
+
+    // As on Apple platforms, inline code is the body's monospaced size and regular weight wherever it is: in a
+    // heading (whose scale GTK multiplies with the code's), and in bold or italic text.
+    func testInlineCodeIsBodySizedAndRegularInHeadingsAndBold() {
+        let text = build("# Head `x`\n\n### Three `y`\n\n**bold `z`** and *italic `w`*")
+        for code in ["x", "y", "z", "w"] {
+            let at = offset(of: code, in: text)
+            let scale = tagProperties("scale", at: at) { g_value_get_double($0) }.reduce(1, *)
+            XCTAssertEqual(scale, RichTextGtkBuilder.codeScale, accuracy: 0.0001, code)
+            XCTAssertEqual(weight(at: at), Int32(PANGO_WEIGHT_NORMAL.rawValue), code)
+            XCTAssertEqual(tagProperty("style", at: at) { g_value_get_enum($0) }, Int32(PANGO_STYLE_NORMAL.rawValue), code)
+        }
+        XCTAssertEqual(weight(at: offset(of: "Head", in: text)), Int32(PANGO_WEIGHT_BOLD.rawValue), "the heading stays bold")
+        let table = build("| `t` | b |\n| - | - |\n| 1 | 2 |")
+        XCTAssertEqual(weight(at: offset(of: "t", in: table)), Int32(PANGO_WEIGHT_NORMAL.rawValue), "code in a bold header cell")
     }
 
     // A NUL in the source would cut the C string short and shift every later tag; it shows as U+FFFD.
