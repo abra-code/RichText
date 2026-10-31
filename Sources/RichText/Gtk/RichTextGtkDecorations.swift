@@ -48,6 +48,10 @@ enum RichTextGtkDecoratedTextView {
             let parent = g_type_class_peek_parent(klass).map { UnsafeMutableRawPointer($0) }
             parentSnapshotLayer = parent?.assumingMemoryBound(to: GtkTextViewClass.self).pointee.snapshot_layer
             klass.assumingMemoryBound(to: GtkTextViewClass.self).pointee.snapshot_layer = snapshotLayer
+            parentMeasure = parent?.assumingMemoryBound(to: GtkWidgetClass.self).pointee.measure
+            klass.assumingMemoryBound(to: GtkWidgetClass.self).pointee.measure = measure
+            parentSizeAllocate = parent?.assumingMemoryBound(to: GtkWidgetClass.self).pointee.size_allocate
+            klass.assumingMemoryBound(to: GtkWidgetClass.self).pointee.size_allocate = sizeAllocate
         }
         info.instance_size = guint16(MemoryLayout<GtkTextView>.size)
         // A name no other copy of this module in the process has taken (two adapters may each link one): each
@@ -103,6 +107,62 @@ enum RichTextGtkDecoratedTextView {
         nonisolated(unsafe) let target = (Unmanaged<Owner>.fromOpaque(data).takeUnretainedValue(), snapshot)
         MainActor.assumeIsolated {
             target.0.view?.paintDecorations(target.1)
+        }
+    }
+
+    // GtkTextView's own measure.
+    nonisolated(unsafe) private static var parentMeasure:
+        (@convention(c) (UnsafeMutablePointer<GtkWidget>?, GtkOrientation, Int32, UnsafeMutablePointer<Int32>?,
+                         UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?) -> Void)?
+
+    // A wrapping GtkTextView has a natural width of 0, so a window or a stack would give the document none of its
+    // own: it asks for the width it takes unwrapped, as the Apple view does. The minimum stays GTK's: it wraps.
+    private static let measure: @convention(c) (UnsafeMutablePointer<GtkWidget>?, GtkOrientation, Int32,
+                                                UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?,
+                                                UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?) -> Void = {
+        widget, orientation, forSize, minimum, natural, minimumBaseline, naturalBaseline in
+        parentMeasure?(widget, orientation, forSize, minimum, natural, minimumBaseline, naturalBaseline)
+        guard orientation == GTK_ORIENTATION_HORIZONTAL, let widget, let natural,
+              let data = g_object_get_data(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self),
+                                           ownerKey) else {
+            return
+        }
+        // GTK measures on its main thread, the main actor's.
+        nonisolated(unsafe) let owner = Unmanaged<Owner>.fromOpaque(data).takeUnretainedValue()
+        let width = MainActor.assumeIsolated {
+            owner.view?.naturalWidth ?? 0
+        }
+        natural.pointee = max(natural.pointee, width)
+    }
+
+    /// The height of the text as laid out now. GtkTextView's own measure, for gtk_widget_measure caches its answer
+    /// until a resize, which is what the caller is deciding on. Whatever width it is asked for, it gives this.
+    static func layoutHeight(of widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
+        // All four: unlike gtk_widget_measure, the class function writes through them without looking.
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        var minimumBaseline: Int32 = -1
+        var naturalBaseline: Int32 = -1
+        parentMeasure?(widget, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural, &minimumBaseline, &naturalBaseline)
+        return natural
+    }
+
+    // GtkTextView's own size_allocate.
+    nonisolated(unsafe) private static var parentSizeAllocate:
+        (@convention(c) (UnsafeMutablePointer<GtkWidget>?, Int32, Int32, Int32) -> Void)?
+
+    private static let sizeAllocate: @convention(c) (UnsafeMutablePointer<GtkWidget>?, Int32, Int32, Int32) -> Void = {
+        widget, width, height, baseline in
+        parentSizeAllocate?(widget, width, height, baseline)
+        guard let widget,
+              let data = g_object_get_data(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self),
+                                           ownerKey) else {
+            return
+        }
+        // GTK allocates on its main thread, the main actor's.
+        nonisolated(unsafe) let owner = Unmanaged<Owner>.fromOpaque(data).takeUnretainedValue()
+        MainActor.assumeIsolated {
+            owner.view?.settleAfterLayout()
         }
     }
 }

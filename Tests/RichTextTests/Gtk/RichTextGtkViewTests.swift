@@ -89,6 +89,147 @@ final class RichTextGtkViewTests: XCTestCase {
         XCTAssertGreaterThan(narrow.lastY, wide.lastY)
     }
 
+    // MARK: - Size
+
+    // A view in a plain box, above a label, in a window; returns what `check` says once GTK has settled. The window
+    // has a height of its own: one sized by its content is measured again when it opens, which hides a view's own
+    // height staying at 0. A `row` is a horizontal box, which gives the view its natural width.
+    private func inABox(_ view: RichTextGtkView, windowWidth: Int32 = 400, expands: Bool = false, row: Bool = false,
+                        check: (UnsafeMutablePointer<GtkWidget>) -> Void) {
+        let window = gtk_window_new()!
+        let gtkWindow = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
+        gtk_window_set_default_size(gtkWindow, windowWidth, 300)
+        let column = gtk_box_new(row ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL, 0)!
+        let columnBox = UnsafeMutableRawPointer(column).assumingMemoryBound(to: GtkBox.self)
+        let widget = UnsafeMutableRawPointer(view.widget).assumingMemoryBound(to: GtkWidget.self)
+        gtk_widget_set_hexpand(widget, expands ? 1 : 0)
+        gtk_box_append(columnBox, widget)
+        gtk_box_append(columnBox, gtk_label_new("below")!)
+        gtk_window_set_child(gtkWindow, column)
+        gtk_window_present(gtkWindow)
+        defer {
+            gtk_box_remove(columnBox, widget)
+            gtk_window_destroy(gtkWindow)
+        }
+        pump(milliseconds: 300)
+        check(widget)
+    }
+
+    // GTK lays a one-line document out without asking for a new size: measured before that, it stayed at height 0.
+    func testAShortDocumentIsAllocatedItsHeight() throws {
+        inABox(RichTextGtkView(markdown: "Short."), expands: true) { widget in
+            XCTAssertGreaterThan(gtk_widget_get_height(widget), 10, "a line of text is not invisible")
+            XCTAssertEqual(gtk_widget_get_height(widget), RichTextGtkDecoratedTextView.layoutHeight(of: widget))
+        }
+    }
+
+    func testANewDocumentIsAllocatedItsHeight() throws {
+        let view = RichTextGtkView(markdown: "Short.")
+        inABox(view, expands: true) { widget in
+            let one = gtk_widget_get_height(widget)
+            view.setMarkdown("Short.\n\nTwo.\n\nThree.")
+            pump(milliseconds: 300)
+            XCTAssertGreaterThan(gtk_widget_get_height(widget), one * 2, "the new text is taller, at the same width")
+            XCTAssertEqual(gtk_widget_get_height(widget), RichTextGtkDecoratedTextView.layoutHeight(of: widget))
+        }
+    }
+
+    // A window narrowed and widened again: each way, GTK wraps a text that fits the view during the allocation,
+    // where the new size it asks for is lost. A width seen before needs its own request as much as a new one.
+    func testTheHeightFollowsTheWidthBackAndForth() throws {
+        let long = String(repeating: "Several words that wrap. ", count: 30)
+        inABox(RichTextGtkView(markdown: long), windowWidth: 300) { widget in
+            let window = UnsafeMutableRawPointer(gtk_widget_get_root(widget)!).assumingMemoryBound(to: GtkWindow.self)
+            for width in [Int32(600), 300, 600, 300, 600] {
+                gtk_window_set_default_size(window, width, 300)
+                // The compositor's answer takes its time when the session is busy.
+                pump { gtk_widget_get_width(widget) == width }
+                pump(milliseconds: 300)
+                XCTAssertEqual(gtk_widget_get_width(widget), width)
+                XCTAssertEqual(gtk_widget_get_height(widget), RichTextGtkDecoratedTextView.layoutHeight(of: widget),
+                               "at width \(width)")
+            }
+        }
+    }
+
+    // A parent that keeps the view at another height does not make it ask again and again at idle.
+    func testAHeldViewStopsAsking() throws {
+        let view = RichTextGtkView(markdown: "Short.")
+        gtk_widget_set_vexpand(UnsafeMutableRawPointer(view.widget).assumingMemoryBound(to: GtkWidget.self), 1)
+        inABox(view, expands: true) { widget in
+            XCTAssertGreaterThan(gtk_widget_get_height(widget), RichTextGtkDecoratedTextView.layoutHeight(of: widget))
+            let clock = gtk_widget_get_frame_clock(widget)
+            let frames = gdk_frame_clock_get_frame_counter(clock)
+            pump(milliseconds: 300)
+            // Not 0: a window of another program can take the focus, which redraws this one. A view that keeps
+            // asking draws a frame each time, about 18 in this time.
+            XCTAssertLessThan(gdk_frame_clock_get_frame_counter(clock) - frames, 6, "nothing changes, so nothing is drawn")
+        }
+    }
+
+    func testAWrappedDocumentIsAllocatedItsHeight() throws {
+        let long = String(repeating: "Several words that wrap. ", count: 30)
+        var narrow: Int32 = 0
+        inABox(RichTextGtkView(markdown: long), windowWidth: 300) { widget in
+            narrow = gtk_widget_get_height(widget)
+        }
+        var wide: Int32 = 0
+        inABox(RichTextGtkView(markdown: long), windowWidth: 900) { widget in
+            wide = gtk_widget_get_height(widget)
+        }
+        XCTAssertGreaterThan(narrow, wide, "wrapping at a narrower width takes more lines")
+    }
+
+    func testNaturalWidthIsTheWidestUnwrappedLine() throws {
+        func natural(_ markdown: String) -> Int32 {
+            let view = RichTextGtkView(markdown: markdown)
+            var width: Int32 = 0
+            gtk_widget_measure(UnsafeMutableRawPointer(view.widget).assumingMemoryBound(to: GtkWidget.self),
+                               GTK_ORIENTATION_HORIZONTAL, -1, nil, &width, nil, nil)
+            return width
+        }
+        let short = natural("Short.")
+        XCTAssertGreaterThan(short, 0)
+        let long = natural(String(repeating: "word ", count: 40))
+        XCTAssertGreaterThan(long, short * 10)
+        XCTAssertGreaterThan(natural("# Short."), short, "a heading is drawn larger")
+        XCTAssertGreaterThan(natural("Short.\n\n    code line that is long enough to be the widest line here"), short,
+                             "a code block's lines count")
+        XCTAssertGreaterThan(natural("| a | b |\n|---|---|\n| Short. | Short. |"), short, "so do a table's columns")
+        XCTAssertGreaterThan(natural("- Short."), short, "and a list's indent")
+    }
+
+    // Given its natural width a document keeps its lines: GtkTextView lays text out a pixel narrower than itself.
+    func testANaturalWidthWrapsNoLine() throws {
+        let long = "A longer line of ordinary text, with enough words in it to pass the width of the window's minimum."
+        for markdown in ["Short.", "A", "Hello world", long, "# A heading", "`code`", "- A list item", "> A quote",
+                         "    code line", "| a | b |\n|---|---|\n| one | two |"] {
+            let view = RichTextGtkView(markdown: markdown)
+            inABox(view, windowWidth: 1200, row: true) { widget in
+                XCTAssertEqual(gtk_widget_get_width(widget), view.naturalWidth, markdown)
+                let height = RichTextGtkDecoratedTextView.layoutHeight(of: widget)
+                gtk_text_view_set_wrap_mode(view.textViewPointer, GTK_WRAP_NONE)
+                pump(milliseconds: 100)
+                XCTAssertEqual(height, RichTextGtkDecoratedTextView.layoutHeight(of: widget), markdown)
+            }
+        }
+    }
+
+    // The width a heading is drawn at, with the widget's own size and with a theme's.
+    func testAHeadingsNaturalWidthIsItsDrawnWidth() throws {
+        for theme in [RichTextTheme.default, RichTextTheme(baseFontSize: 20)] {
+            let view = RichTextGtkView(markdown: "# A heading of some length", theme: theme)
+            inABox(view, windowWidth: 800, row: true) { _ in
+                let buffer = gtk_text_view_get_buffer(view.textViewPointer)!
+                var end = GtkTextIter()
+                gtk_text_buffer_get_end_iter(buffer, &end)
+                var rect = GdkRectangle()
+                gtk_text_view_get_iter_location(view.textViewPointer, &end, &rect)
+                XCTAssertEqual(Double(view.naturalWidth), Double(rect.x), accuracy: 4)
+            }
+        }
+    }
+
     // A plain GTK program's switch to dark (GtkSettings) recolors the shown text in place.
     func testDarkPreferenceRecolors() throws {
         let settings = try XCTUnwrap(gtk_settings_get_default())

@@ -68,6 +68,8 @@ public final class RichTextGtkView {
     private(set) var imageSlots: [RichTextGtkImageSlot] = []
     private var layoutRedrawPending = false
     private var layoutRedraws = 0              // for the shown document: a bound, should a line never get a height
+    private var settlePending = false
+    private var settledSizes: Set<SettledSize> = []   // the sizes a new layout has been asked for, once each
     /// The find controller bound to this view (RichTextGtkFindController.bind(view:)), told when the text changes.
     weak var findController: RichTextGtkFindController?
 
@@ -126,6 +128,20 @@ public final class RichTextGtkView {
         gtk_widget_queue_draw(widgetPointer)
     }
 
+    /// The width the document takes with no line wrapped, in pixels (the widget's natural width): the widest of
+    /// its paragraphs, code lines and tables, and of its images, which are widgets of their own.
+    var naturalWidth: Int32 {
+        // GtkTextView lays its text out one pixel narrower than itself (room for the cursor), and Pango's pixel widths
+        // are rounded to the nearest: without these two a line this wide would wrap.
+        var width = Int32((builder?.naturalWidth ?? 0).rounded(.up)) + 2
+        for slot in imageSlots {
+            var natural: Int32 = 0
+            gtk_widget_measure(slot.widget, GTK_ORIENTATION_HORIZONTAL, -1, nil, &natural, nil, nil)
+            width = max(width, natural)
+        }
+        return width
+    }
+
     /// The link at a character offset of the text, if any.
     func link(atOffset offset: Int) -> URL? {
         links.first { $0.range.contains(offset) }?.url
@@ -153,6 +169,8 @@ public final class RichTextGtkView {
             slot.start(policy: remoteImages)
         }
         layoutRedraws = 0
+        settledSizes = []
+        settleAfterLayout()
         findController?.textChanged()
     }
 
@@ -172,31 +190,84 @@ public final class RichTextGtkView {
         }
         layoutRedrawPending = true
         layoutRedraws += 1
-        let box = Unmanaged.passRetained(WeakView(self)).toOpaque()
+        afterLayout { view in
+            view.layoutRedrawPending = false
+            gtk_widget_queue_draw(view.widgetPointer)
+        }
+    }
+
+    // Runs `work` once GTK has laid the text out: an idle below its layout work's priority.
+    private func afterLayout(_ work: @escaping @MainActor (RichTextGtkView) -> Void) {
+        let box = Unmanaged.passRetained(LayoutWork(self, work)).toOpaque()
         g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, { data in
             guard let data else {
                 return 0
             }
-            nonisolated(unsafe) let box = Unmanaged<WeakView>.fromOpaque(data).takeUnretainedValue()
+            nonisolated(unsafe) let box = Unmanaged<LayoutWork>.fromOpaque(data).takeUnretainedValue()
             MainActor.assumeIsolated {
                 if let view = box.view {
-                    view.layoutRedrawPending = false
-                    gtk_widget_queue_draw(view.widgetPointer)
+                    box.work(view)
                 }
             }
             return 0
         }, box, { data in
             if let data {
-                Unmanaged<WeakView>.fromOpaque(data).release()
+                Unmanaged<LayoutWork>.fromOpaque(data).release()
             }
         })
     }
 
-    private final class WeakView {
+    private final class LayoutWork {
         weak var view: RichTextGtkView?
-        init(_ view: RichTextGtkView) {
+        let work: @MainActor (RichTextGtkView) -> Void
+        init(_ view: RichTextGtkView, _ work: @escaping @MainActor (RichTextGtkView) -> Void) {
             self.view = view
+            self.work = work
         }
+    }
+
+    // MARK: - Size
+
+    private struct SettledSize: Hashable {
+        let width: Int32
+        let height: Int32
+    }
+
+    /// After an allocation or a new text: GTK lays the text out in the background, and it does not always ask
+    /// for a new size when that gives the view another height (a one-line document measured before it had a
+    /// layout stays at height 0). So once the layout is done, ask, unless the view has that height already.
+    func settleAfterLayout() {
+        guard !settlePending else {
+            return
+        }
+        settlePending = true
+        afterLayout { view in
+            view.settlePending = false
+            view.settle()
+        }
+    }
+
+    private func settle() {
+        // A scrolled window scrolls the text, which is taller than the view on purpose.
+        if let parent = gtk_widget_get_parent(widgetPointer),
+           g_type_check_instance_is_a(UnsafeMutableRawPointer(parent).assumingMemoryBound(to: GTypeInstance.self),
+                                      gtk_scrolled_window_get_type()) != 0 {
+            return
+        }
+        let height = RichTextGtkDecoratedTextView.layoutHeight(of: widgetPointer)
+        // The view has its height: nothing is pending, and a later change is a new one, at a size seen before or not
+        // (a window narrowed and widened back). This stops the asking below as well, which goes on only while no
+        // size is reached.
+        guard height != gtk_widget_get_height(widgetPointer) else {
+            settledSizes = []
+            return
+        }
+        // Each size once: a parent may hold the view at another height for good (a fixed frame), and heights can
+        // alternate with a scroll bar that comes and goes.
+        guard settledSizes.insert(SettledSize(width: gtk_widget_get_width(widgetPointer), height: height)).inserted else {
+            return
+        }
+        gtk_widget_queue_resize(widgetPointer)
     }
 
     // MARK: - Find

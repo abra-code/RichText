@@ -80,6 +80,8 @@ final class RichTextGtkBuilder {
     private(set) var decorations: [RichTextGtkDecoration] = []
     // The innermost block quote's bar position while its blocks are appended (each paragraph gets the bar).
     private var quoteBarX: Double?
+    /// The width the document takes with no line wrapped: its widest paragraph, in pixels, from the left edge.
+    private(set) var naturalWidth = 0.0
 
     /// The ratio of each heading level's size to the body size: macOS's title1, title2, title3, headline and
     /// subheadline text styles against its 13-point body, which the Apple renderer uses.
@@ -109,6 +111,7 @@ final class RichTextGtkBuilder {
         images = []
         decorations = []
         quoteBarX = nil
+        naturalWidth = 0
         spacerStart = nil
         spacerEnd = nil
         // Made before any other tag: a tag table gives later tags the higher priority, so the heading and code
@@ -147,12 +150,15 @@ final class RichTextGtkBuilder {
         case .heading(let level, let inlines):
             let start = offset
             appendInlines(inlines, style: InlineStyle(bold: true, secondary: secondary, heading: level))
+            let scale = Self.headingScale[min(max(level, 1), Self.headingScale.count) - 1]
+            noteWidth(indent + measure(inlines, bold: true, scale: scale))
             paragraphEnd(start: start, tags: [headingTag(level), marginTag(left: indent)],
                          above: theme.blockSpacing * 0.6, below: theme.blockSpacing * 0.5)
 
         case .paragraph(let inlines):
             let start = offset
             appendInlines(inlines, style: InlineStyle(secondary: secondary))
+            noteWidth(indent + measure(inlines, bold: false))
             paragraphEnd(start: start, tags: [marginTag(left: indent)], below: theme.blockSpacing)
 
         case .codeBlock(let language, let code):
@@ -187,6 +193,8 @@ final class RichTextGtkBuilder {
     private func appendCodeBlock(_ code: String, language: String?, indent: Double) {
         let start = offset
         insert(code)
+        // The card pads its text by 10 pixels on each side.
+        noteWidth(indent + 20 + measure([.code(code)], bold: false))
         if theme.syntaxHighlighting {
             let profile = SyntaxProfile.profile(for: language)
             for token in RichTextSyntaxHighlighter.tokenize(code, profile: profile) {
@@ -247,6 +255,7 @@ final class RichTextGtkBuilder {
         apply(secondaryTag(), from: start, to: offset)
         insert("\t")
         appendInlines(inlines, style: InlineStyle(secondary: secondary))
+        noteWidth(indent + Double(theme.indentStep) + measure(inlines, bold: false))
         paragraphEnd(start: start, tags: [listTag(indent: indent)], below: theme.listSpacing)
     }
 
@@ -273,6 +282,7 @@ final class RichTextGtkBuilder {
         for width in widths {
             edges.append(edges[edges.count - 1] + padding * 2 + width)
         }
+        noteWidth(edges[edges.count - 1])
         let tabs = tableTabs(edges: edges, alignments: alignments, padding: padding)
         // A row starts at the left (its cells are placed by the tabs); a last cell wider than the view has room for
         // wraps at the view's right edge, less the cell's padding, and its wrapped lines hang at the last column
@@ -292,10 +302,15 @@ final class RichTextGtkBuilder {
         }
     }
 
-    // The pixel width of a cell as it is drawn: the body font (bold for a header cell) with the cell's own
-    // bold, italic and code runs, so a styled cell does not run past the next column's tab stop (Pango would
-    // then move the following cells one stop to the right).
-    private func measure(_ inlines: [RichTextInline], bold: Bool) -> Double {
+    private func noteWidth(_ width: Double) {
+        naturalWidth = max(naturalWidth, width)
+    }
+
+    // The pixel width of inline content as it is drawn, on one line (the widest of them, with line breaks): the
+    // body font at `scale` (bold for a header cell or a heading) with the content's own bold, italic and code
+    // runs. For a table cell, so a styled cell does not run past the next column's tab stop (Pango would then
+    // move the following cells one stop to the right); for a paragraph, the width it takes unwrapped.
+    private func measure(_ inlines: [RichTextInline], bold: Bool, scale: Double = 1) -> Double {
         var text = ""
         let attributes = pango_attr_list_new()!
         defer {
@@ -348,6 +363,15 @@ final class RichTextGtkBuilder {
         }
         if let size = theme.baseFontSize {
             pango_font_description_set_size(description, Int32(Double(size) * Double(PANGO_SCALE)))
+        }
+        if scale != 1 {
+            // GTK's style gives an absolute size (device units): set as points, it would come out a third larger.
+            let size = Double(pango_font_description_get_size(description)) * scale
+            if pango_font_description_get_size_is_absolute(description) != 0 {
+                pango_font_description_set_absolute_size(description, size)
+            } else {
+                pango_font_description_set_size(description, Int32(size))
+            }
         }
         if bold {
             pango_font_description_set_weight(description, PANGO_WEIGHT_BOLD)
