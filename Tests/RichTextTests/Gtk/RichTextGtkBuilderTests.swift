@@ -23,6 +23,7 @@ final class RichTextGtkBuilderTests: XCTestCase {
         }
     }
 
+    private var lastBuilder: RichTextGtkBuilder?
     private let palette = RichTextGtkPalette(foreground: GdkRGBA(red: 0, green: 0, blue: 0, alpha: 1))
 
     // Builds `markdown` and returns the buffer's text.
@@ -37,6 +38,7 @@ final class RichTextGtkBuilderTests: XCTestCase {
             g_object_unref(UnsafeMutableRawPointer(pango))
         }
         let builder = RichTextGtkBuilder(buffer: buffer, theme: theme, palette: palette, pango: pango)
+        lastBuilder = builder
         builder.build(RichTextDocument(markdown: markdown))
         links = builder.links
         var start = GtkTextIter()
@@ -73,8 +75,8 @@ final class RichTextGtkBuilderTests: XCTestCase {
                                                         .assumingMemoryBound(to: GObjectClass.self), name) {
                 var flag = GValue()
                 g_value_init(&flag, GType(5 << G_TYPE_FUNDAMENTAL_SHIFT))
-                let setName = (name == "foreground-rgba" ? "foreground" : name == "paragraph-background-rgba"
-                               ? "paragraph-background" : name == "size-points" ? "size" : name) + "-set"
+                // The flag of an -rgba color is the color's plain name's, and size-points' is size's.
+                let setName = (name == "size-points" ? "size" : name.hasSuffix("-rgba") ? String(name.dropLast(5)) : name) + "-set"
                 g_object_get_property(object, setName, &flag)
                 if g_value_get_boolean(&flag) != 0 {
                     var value = GValue()
@@ -226,6 +228,27 @@ final class RichTextGtkBuilderTests: XCTestCase {
         let body = tagProperty("size-points", at: offset(of: "body", in: text)) { g_value_get_double($0) }
         XCTAssertEqual(body, 20)
         XCTAssertEqual(heading ?? 0, 20 * 22.0 / 13, accuracy: 0.01)
+    }
+
+    // MARK: - Links and colors
+
+    func testLinkSplitOverStyledRunsIsOneLink() {
+        let text = build("[a **b** c](https://swift.org) d")
+        let start = offset(of: "a b c", in: text)
+        XCTAssertEqual(links, [RichTextGtkLink(range: start..<(start + 5), url: URL(string: "https://swift.org")!)])
+    }
+
+    // A style change recolors the tags in place: the text and its tags stay, the colors change.
+    func testRecolorChangesThePaletteColorsInPlace() {
+        let text = build("```swift\nlet x\n```\n\n[go](https://swift.org) and `code`")
+        let dark = RichTextGtkPalette(foreground: GdkRGBA(red: 1, green: 1, blue: 1, alpha: 1))
+        XCTAssertNotEqual(dark.syntaxKeyword, palette.syntaxKeyword)
+        lastBuilder?.recolor(dark)
+        XCTAssertEqual(foreground(at: offset(of: "let", in: text)), dark.syntaxKeyword)
+        XCTAssertEqual(foreground(at: offset(of: "go", in: text)), dark.link)
+        XCTAssertEqual(tagProperty("background-rgba", at: offset(of: "code", in: text)) {
+            g_value_get_boxed($0).assumingMemoryBound(to: GdkRGBA.self).pointee
+        }, dark.codeFill)
     }
 }
 

@@ -58,7 +58,7 @@ struct RichTextGtkLink: Equatable {
 final class RichTextGtkBuilder {
     private let buffer: UnsafeMutablePointer<GtkTextBuffer>
     private let theme: RichTextTheme
-    private let palette: RichTextGtkPalette
+    private(set) var palette: RichTextGtkPalette
     private let pango: OpaquePointer   // a PangoContext with the view's font, for measuring table cells
     private var tags: [String: UnsafeMutablePointer<GtkTextTag>] = [:]
     private var offset = 0             // the buffer's length in characters
@@ -72,12 +72,19 @@ final class RichTextGtkBuilder {
     static let headingScale: [Double] = [22.0 / 13, 17.0 / 13, 15.0 / 13, 1, 11.0 / 13]
     static let codeScale = 0.94
 
+    /// Keeps a reference on `buffer`: the builder recolors its tags later (recolor), whatever happens to the
+    /// view's buffer meanwhile.
     init(buffer: UnsafeMutablePointer<GtkTextBuffer>, theme: RichTextTheme, palette: RichTextGtkPalette,
          pango: OpaquePointer) {
+        g_object_ref(UnsafeMutableRawPointer(buffer))
         self.buffer = buffer
         self.theme = theme
         self.palette = palette
         self.pango = pango
+    }
+
+    isolated deinit {
+        g_object_unref(UnsafeMutableRawPointer(buffer))
     }
 
     /// Replaces the buffer's text with `document`.
@@ -418,12 +425,42 @@ final class RichTextGtkBuilder {
             runTags.append(namedTag("link", [("foreground-rgba", .rgba(palette.link)),
                                              ("underline", .enumeration(pango_underline_get_type(),
                                                                         Int32(PANGO_UNDERLINE_SINGLE.rawValue)))]))
-            links.append(RichTextGtkLink(range: start..<offset, url: link))
+            // A link split over styled runs ("[a **b**](url)") is one link.
+            if let previous = links.last, previous.url == link, previous.range.upperBound == start {
+                links[links.count - 1] = RichTextGtkLink(range: previous.range.lowerBound..<offset, url: link)
+            } else {
+                links.append(RichTextGtkLink(range: start..<offset, url: link))
+            }
         } else if style.secondary {
             runTags.append(secondaryTag())
         }
         for tag in runTags {
             apply(tag, from: start, to: offset)
+        }
+    }
+
+    // MARK: - Colors
+
+    /// Gives the tags that carry the palette's colors the colors of `palette` (the style changed, light to
+    /// dark or back): the text stays, with its selection and scroll position.
+    func recolor(_ palette: RichTextGtkPalette) {
+        self.palette = palette
+        let colors: [(String, String, GdkRGBA)] = [
+            ("secondary", "foreground-rgba", palette.secondary),
+            ("link", "foreground-rgba", palette.link),
+            ("code", "background-rgba", palette.codeFill),
+            ("code-block", "paragraph-background-rgba", palette.codeFill),
+            ("header-row", "paragraph-background-rgba", palette.codeFill),
+            ("rule", "paragraph-background-rgba", palette.separator),
+            ("syntax-keyword", "foreground-rgba", palette.syntaxKeyword),
+            ("syntax-string", "foreground-rgba", palette.syntaxString),
+            ("syntax-number", "foreground-rgba", palette.syntaxNumber),
+            ("syntax-comment", "foreground-rgba", palette.syntaxComment),
+        ]
+        for (name, property, color) in colors {
+            if let tag = tags[name] {
+                Self.set(tag, property, .rgba(color))
+            }
         }
     }
 
