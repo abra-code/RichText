@@ -4,7 +4,7 @@
 // in the same layers: the find engine (RichTextSearch); a controller holding the query, the options, the
 // matches and the one the reader is on, which paints them on the view it is bound to; and a bar that edits the
 // controller, which the host places (above its scrolled window), as on Apple platforms. A host with a search
-// field of its own drives `query` and never shows the bar.
+// field of its own drives `query`, and shows the bar with present(focus: false) if it wants the bar at all.
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -94,10 +94,11 @@ public final class RichTextGtkFindController {
         changed()
     }
 
-    /// Show the bar (its field takes focus).
-    public func present() {
+    /// Show the bar. Its field takes the focus, unless `focus` is false: for a term from a search field of the
+    /// host's, where the reader is typing.
+    public func present(focus: Bool = true) {
         isPresented = true
-        focusRequested = true
+        focusRequested = focus
         changed()
     }
 
@@ -282,7 +283,17 @@ public final class RichTextGtkFindBar {
         }
         let shown = gtk_search_bar_get_search_mode(searchBar) != 0
         if shown != controller.isPresented {
+            // GtkSearchBar puts the focus in its entry as it opens. Giving the focus back to the host's field would
+            // select its text, and the reader's next key would replace it: so an opening without the focus happens
+            // with no entry connected.
+            let keepsFocus = controller.isPresented && !controller.focusRequested
+            if keepsFocus {
+                gtk_search_bar_connect_entry(searchBar, nil)
+            }
             gtk_search_bar_set_search_mode(searchBar, controller.isPresented ? 1 : 0)
+            if keepsFocus {
+                gtk_search_bar_connect_entry(searchBar, OpaquePointer(entry))
+            }
         }
         if controller.isPresented, controller.focusRequested {
             controller.focusRequested = false

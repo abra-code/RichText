@@ -11,8 +11,8 @@
 // URL, as the Apple text views open theirs; the pointer is a hand over a link. Code cards, quote bars and the table
 // grid are painted behind the text (RichTextGtkDecorations.swift). Images load through
 // AsyncImageCache into widgets at their places in the text (RichTextGtkImageSlot), as remoteImages allows.
-// Colors follow the GTK style: a plain GTK program's light/dark switch (GtkSettings) recolors the text in
-// place, and a host whose style changes another way (libadwaita's AdwStyleManager) calls refreshColors().
+// Colors follow the GTK style: whatever changes it, a theme, a light/dark switch from GtkSettings or from
+// libadwaita, the view recolors the text in place (RichTextGtkDecoratedTextView's css_changed).
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -62,8 +62,6 @@ public final class RichTextGtkView {
 
     private let textView: UnsafeMutablePointer<GtkTextView>
     private(set) var builder: RichTextGtkBuilder?
-    private var settings: OpaquePointer?          // the GtkSettings the handlers below are connected to
-    private var settingsHandlers: [gulong] = []
     private(set) var links: [RichTextGtkLink] = []
     private(set) var imageSlots: [RichTextGtkImageSlot] = []
     private var layoutRedrawPending = false
@@ -97,7 +95,6 @@ public final class RichTextGtkView {
         gtk_text_view_set_accepts_tab(textView, 0)
         rebuild()
         openLinksOnClick()
-        followStyleChanges()
         RichTextGtkDecoratedTextView.paint(textView, by: self)
     }
 
@@ -119,9 +116,8 @@ public final class RichTextGtkView {
         return baseURL.map { document.resolvingImageURLs(against: $0) } ?? document
     }
 
-    /// Reads the colors again from the GTK style and recolors the text in place (selection and scroll stay).
-    /// Called on GtkSettings' theme changes and when the view is shown; a host whose style changes otherwise
-    /// (libadwaita's AdwStyleManager "dark") calls it too.
+    /// Reads the colors again from the GTK style and recolors the text in place (selection and scroll stay). The
+    /// view does this itself whenever its style changes; a host has no need to.
     public func refreshColors() {
         builder?.recolor(currentPalette())
         // The decorations are painted in the palette's colors, not held by tags.
@@ -140,6 +136,25 @@ public final class RichTextGtkView {
             width = max(width, natural)
         }
         return width
+    }
+
+    /// The widget's style changed, which happens for many reasons (focus, pointer): only a new text color means
+    /// new colors, since the palette comes from it.
+    func styleChanged() {
+        guard let builder, !sameColor(currentForeground(), builder.palette.foreground) else {
+            return
+        }
+        refreshColors()
+    }
+
+    private func currentForeground() -> GdkRGBA {
+        var foreground = GdkRGBA()
+        gtk_widget_get_color(widgetPointer, &foreground)
+        return foreground
+    }
+
+    private func sameColor(_ a: GdkRGBA, _ b: GdkRGBA) -> Bool {
+        a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha
     }
 
     /// The link at a character offset of the text, if any.
@@ -175,9 +190,7 @@ public final class RichTextGtkView {
     }
 
     private func currentPalette() -> RichTextGtkPalette {
-        var foreground = GdkRGBA()
-        gtk_widget_get_color(widgetPointer, &foreground)
-        return RichTextGtkPalette(foreground: foreground)
+        RichTextGtkPalette(foreground: currentForeground())
     }
 
     // MARK: - Redraw after layout
@@ -379,36 +392,7 @@ public final class RichTextGtkView {
         return link(atOffset: Int(gtk_text_iter_get_offset(&position)))
     }
 
-    // MARK: - Style
-
-    // GtkSettings' theme properties change when a plain GTK program switches light and dark (GTK 4.20 adds
-    // gtk-interface-color-scheme, from the desktop's setting; on older GTK that notification never comes); the
-    // colors are read again when the view is shown, too (in its window's style).
-    private func followStyleChanges() {
-        if let settings = gtk_settings_get_default() {
-            self.settings = settings
-            let object = UnsafeMutableRawPointer(settings)
-            for property in ["gtk-application-prefer-dark-theme", "gtk-theme-name", "gtk-interface-color-scheme"] {
-                let id = RichTextGtkSignals.onNotify(object, property) { [weak self] in
-                    self?.refreshColors()
-                }
-                if id != 0 {
-                    settingsHandlers.append(id)
-                }
-            }
-        }
-        RichTextGtkSignals.on(UnsafeMutableRawPointer(textView), "map") { [weak self] in
-            self?.refreshColors()
-        }
-    }
-
     isolated deinit {
-        // The settings outlive the view: their handlers go now. The widget's own controllers go with it.
-        if let settings {
-            for id in settingsHandlers {
-                g_signal_handler_disconnect(UnsafeMutableRawPointer(settings), id)
-            }
-        }
         g_object_unref(UnsafeMutableRawPointer(widget))
     }
 }

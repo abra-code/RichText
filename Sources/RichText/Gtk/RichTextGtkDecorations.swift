@@ -35,7 +35,8 @@ struct RichTextGtkDecoration: Equatable {
 
 // MARK: - The text view subclass
 
-/// GtkTextView with snapshot_layer set: its view (RichTextGtkView) paints the decorations below the text.
+/// GtkTextView with a few class functions set, for its view (RichTextGtkView): snapshot_layer paints the decorations
+/// below the text, measure and size_allocate size it outside a scrolled window, css_changed follows its style.
 enum RichTextGtkDecoratedTextView {
     /// The subclass's GType, registered on first use.
     @MainActor static let type: GType = {
@@ -52,6 +53,8 @@ enum RichTextGtkDecoratedTextView {
             klass.assumingMemoryBound(to: GtkWidgetClass.self).pointee.measure = measure
             parentSizeAllocate = parent?.assumingMemoryBound(to: GtkWidgetClass.self).pointee.size_allocate
             klass.assumingMemoryBound(to: GtkWidgetClass.self).pointee.size_allocate = sizeAllocate
+            parentCSSChanged = parent?.assumingMemoryBound(to: GtkWidgetClass.self).pointee.css_changed
+            klass.assumingMemoryBound(to: GtkWidgetClass.self).pointee.css_changed = cssChanged
         }
         info.instance_size = guint16(MemoryLayout<GtkTextView>.size)
         // A name no other copy of this module in the process has taken (two adapters may each link one): each
@@ -145,6 +148,26 @@ enum RichTextGtkDecoratedTextView {
         var naturalBaseline: Int32 = -1
         parentMeasure?(widget, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural, &minimumBaseline, &naturalBaseline)
         return natural
+    }
+
+    // GtkTextView's own css_changed.
+    nonisolated(unsafe) private static var parentCSSChanged:
+        (@convention(c) (UnsafeMutablePointer<GtkWidget>?, OpaquePointer?) -> Void)?
+
+    // The style the widget has just been given, however it changed. A signal of the style's source, such as
+    // libadwaita's notify::dark, comes before this, when the widget still reads the old colors.
+    private static let cssChanged: @convention(c) (UnsafeMutablePointer<GtkWidget>?, OpaquePointer?) -> Void = { widget, change in
+        parentCSSChanged?(widget, change)
+        guard let widget,
+              let data = g_object_get_data(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self),
+                                           ownerKey) else {
+            return
+        }
+        // GTK validates styles on its main thread.
+        nonisolated(unsafe) let owner = Unmanaged<Owner>.fromOpaque(data).takeUnretainedValue()
+        MainActor.assumeIsolated {
+            owner.view?.styleChanged()
+        }
     }
 
     // GtkTextView's own size_allocate.

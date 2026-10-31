@@ -230,6 +230,31 @@ final class RichTextGtkViewTests: XCTestCase {
         }
     }
 
+    // A style change that does not come through GtkSettings, as libadwaita's does: the view reads the new color when
+    // GTK gives it the new style, not when the source announces the change, while the widget still has the old one.
+    func testAStyleChangeFromAnywhereRecolors() throws {
+        let window = gtk_window_new()!
+        let gtkWindow = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
+        let view = RichTextGtkView(markdown: "Some text, and a [link](https://swift.org).")
+        gtk_window_set_child(gtkWindow, UnsafeMutableRawPointer(view.widget).assumingMemoryBound(to: GtkWidget.self))
+        gtk_window_present(gtkWindow)
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_string(provider, "textview { color: rgb(200, 0, 0); }")
+        let display = try XCTUnwrap(gdk_display_get_default())
+        defer {
+            gtk_style_context_remove_provider_for_display(display, OpaquePointer(provider))
+            g_object_unref(UnsafeMutableRawPointer(provider))
+            gtk_window_destroy(gtkWindow)
+        }
+        pump(milliseconds: 300)
+        let before = try XCTUnwrap(view.builder?.palette.foreground)
+        XCTAssertNotEqual(before.red, 200.0 / 255, accuracy: 0.05, "the session's text must not start near this red")
+        gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), guint(GTK_STYLE_PROVIDER_PRIORITY_USER))
+        pump(milliseconds: 300)
+        let after = try XCTUnwrap(view.builder?.palette.foreground)
+        XCTAssertEqual(after.red, 200.0 / 255, accuracy: 0.01, "the palette follows the widget's new color")
+    }
+
     // A plain GTK program's switch to dark (GtkSettings) recolors the shown text in place.
     func testDarkPreferenceRecolors() throws {
         let settings = try XCTUnwrap(gtk_settings_get_default())

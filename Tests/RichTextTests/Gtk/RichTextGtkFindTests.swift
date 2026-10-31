@@ -134,6 +134,42 @@ final class RichTextGtkFindTests: XCTestCase {
         }
     }
 
+    // A term from the host's own search field: the bar shows and the keyboard stays where the reader is typing.
+    func testPresentWithoutFocusLeavesTheFocusWhereItIs() throws {
+        try XCTSkipUnless(gtkDisplay(), "no display")
+        let view = RichTextGtkView(markdown: "short")
+        let find = RichTextGtkFindController()
+        find.bind(view: view)
+        let bar = RichTextGtkFindBar(find)
+        let window = gtk_window_new()!
+        let gtkWindow = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
+        gtk_window_set_default_size(gtkWindow, 400, 300)
+        let column = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let hostField = gtk_entry_new()!
+        for child in [hostField, widget(bar.widget), widget(view.widget)] {
+            gtk_box_append(UnsafeMutableRawPointer(column).assumingMemoryBound(to: GtkBox.self), child)
+        }
+        gtk_window_set_child(gtkWindow, column)
+        gtk_window_present(gtkWindow)
+        defer {
+            gtk_window_destroy(gtkWindow)
+        }
+        pump(milliseconds: 300)
+        gtk_widget_grab_focus(hostField)
+        find.query = "short"
+        find.present(focus: false)
+        pump(milliseconds: 300)
+        XCTAssertTrue(find.isPresented)
+        let focus = try XCTUnwrap(gtk_root_get_focus(gtk_widget_get_root(hostField)))
+        XCTAssertTrue(focus == hostField || gtk_widget_is_ancestor(focus, hostField) != 0, "the host's field keeps the focus")
+        // Asking for the focus afterward still works.
+        find.present()
+        pump(milliseconds: 300)
+        let entry = try XCTUnwrap(bar.entryForTests)
+        let now = try XCTUnwrap(gtk_root_get_focus(gtk_widget_get_root(entry)))
+        XCTAssertTrue(now == entry || gtk_widget_is_ancestor(now, entry) != 0)
+    }
+
     // In a window: every present() (a repeat Ctrl+F too) puts the focus in the field, and the current match is
     // scrolled into view after the view rebuilds.
     func testPresentFocusesAndTheCurrentMatchIsScrolledTo() throws {
