@@ -79,7 +79,7 @@ let package = Package(
     ],
     dependencies: [
         // The image loader and cache; 0.2.0 is its first version with the Linux port.
-        .package(url: "https://github.com/abra-code/AsyncImageCache", from: "0.2.0"),
+        .package(url: "https://github.com/abra-code/AsyncImageCache", from: "0.2.1"),
     ],
     targets: [
         // GTK 4's C API (GtkTextView, GtkTextBuffer, Pango), for the renderer.
@@ -111,7 +111,7 @@ let package = Package(
     ],
     dependencies: [
         // AsyncImageCache lives in its own repo, consumed as a versioned release.
-        .package(url: "https://github.com/abra-code/AsyncImageCache", from: "0.1.0"),
+        .package(url: "https://github.com/abra-code/AsyncImageCache", from: "0.2.1"),
     ],
     targets: [
         .target(

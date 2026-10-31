@@ -55,7 +55,7 @@ The Android port has the same three layers (`RichTextSearch` / `RichTextPlainTex
 
 ## Linux
 
-On Linux the same `RichText` module builds over GTK 4 (`gtk4`, through pkg-config) and FoundationEssentials, with AsyncImageCache 0.2.0 or later for images. The oldest versions supported are GNOME 48's: GTK 4.18 and GLib 2.84.
+On Linux the same `RichText` module builds over GTK 4 (`gtk4`, through pkg-config) and FoundationEssentials, with AsyncImageCache 0.2.1 or later for images. The oldest versions supported are GNOME 48's: GTK 4.18 and GLib 2.84.
 
 - **`RichTextGtkView`** shows a document in one read-only GtkTextView, selectable and copyable as a unit: headings, inline styles, code blocks colored by the same syntax highlighter, quotes, lists, rules, tab-stop tables, links that open on a click, and images loading through AsyncImageCache under `remoteImages`. Colors follow the GTK style, light and dark; a libadwaita host calls `refreshColors()` when its style changes. Pad its sides with the widget's margins (the document's indents replace the text view's left and right margins); its top and bottom margins are free to use.
 - **Find:** `RichTextSearch` on Linux has the same options, over GLib (case folding, normalization, and GRegex, which is PCRE2, for regular expressions), with ranges in Unicode scalars, the GtkTextBuffer's character offsets. `RichTextGtkFindController` and `RichTextGtkFindBar` (a GtkSearchBar the host places above its scrolled window, with Ctrl+F and Ctrl+G) mirror the Apple controller and bar.
