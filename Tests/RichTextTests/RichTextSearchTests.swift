@@ -183,7 +183,21 @@ final class RichTextSearchTests: XCTestCase {
         XCTAssertEqual(ranges("(anything", "("), [NSRange(location: 0, length: 1)])
     }
 
+    // An emoji next to a match is not a word character: the check reads whole scalars, not UTF-16 units.
+    func testWholeWordNextToAnEmoji() {
+        let whole = RichTextSearchOptions(wholeWord: true)
+        XCTAssertEqual(ranges("\u{1F600}x x\u{1F600}", "x", whole), [NSRange(location: 2, length: 1), NSRange(location: 4, length: 1)])
+        XCTAssertEqual(ranges("x\u{1F600} x", "x", RichTextSearchOptions(wholeWord: true, regularExpression: true)),
+                       [NSRange(location: 0, length: 1), NSRange(location: 4, length: 1)])
+    }
+
     // MARK: - Snippets
+
+    func testSnippetKeepsAstralCharactersWhole() {
+        let match = RichTextSearch.matches(in: "I \u{1F600} like cats", query: "cats").first
+        XCTAssertEqual(match?.snippet, "I \u{1F600} like cats")
+        XCTAssertEqual(match.map { inSnippet($0) }, "cats")
+    }
 
     func testSnippetStaysOnTheMatchLineAndCollapsesWhitespace() {
         let text = "first line\nthe   quick brown   fox\nthird line"

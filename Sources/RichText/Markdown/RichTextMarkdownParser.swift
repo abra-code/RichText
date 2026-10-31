@@ -1072,7 +1072,7 @@ private extension StringProtocol {
         return lines
     }
 
-    /// Without leading and trailing white space: tabs and Unicode space separators, as
+    /// Without leading and trailing white space: tabs, Unicode space separators and U+200B ZERO WIDTH SPACE, as
     /// trimmingCharacters(in: .whitespaces) has it.
     func trimmingWhitespace() -> String {
         let scalars = unicodeScalars
@@ -1123,9 +1123,10 @@ private extension StringProtocol {
     }
 }
 
-/// CharacterSet.whitespaces: the tab and Unicode's space separators.
+/// CharacterSet.whitespaces: the tab, Unicode's space separators and U+200B ZERO WIDTH SPACE (which Foundation
+/// counts too, though it is a format character).
 private func isInlineWhitespace(_ scalar: Unicode.Scalar) -> Bool {
-    return scalar == "\t" || scalar.properties.generalCategory == .spaceSeparator
+    return scalar == "\t" || scalar == "\u{200B}" || scalar.properties.generalCategory == .spaceSeparator
 }
 
 /// A regular expression's \s, which in ICU (NSRegularExpression) is Unicode's White_Space property: it

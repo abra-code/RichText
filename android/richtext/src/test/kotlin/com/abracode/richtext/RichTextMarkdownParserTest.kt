@@ -294,6 +294,13 @@ class RichTextMarkdownParserTest {
             inlines("[*a](https://u.com) and *b*"))
     }
 
+    // U+200B ZERO WIDTH SPACE is white space for trimming, as in the Swift reference (Foundation's
+    // CharacterSet.whitespaces): trimmed from a heading, and a line of only U+200B is blank.
+    @Test fun zeroWidthSpaceIsTrimmedWhiteSpace() {
+        assertEquals(listOf(heading(1, text("Hi"))), parse("# Hi\u200B"))
+        assertEquals(listOf(para(text("a")), para(text("b"))), parse("a\n\u200B\nb"))
+    }
+
     @Test fun nestedLinkAndEmphasisStillParse() {
         assertEquals(
             listOf(para(link("v", emph(link("u", text("bold")))))),

@@ -5,13 +5,14 @@ package com.abracode.richtext
 // characters identically.
 
 /**
- * True for the characters in Swift's `CharacterSet.whitespaces`: CHARACTER TABULATION (U+0009) plus every
- * code point in Unicode General Category Zs (space separators). Deliberately NOT newlines - the reference
- * splits on newlines first, then trims lines with `.whitespaces`, so this must exclude line breaks (unlike
- * Kotlin's [Char.isWhitespace], which would also strip U+2028 / newlines).
+ * True for the characters in Swift's `CharacterSet.whitespaces`: CHARACTER TABULATION (U+0009), every code
+ * point in Unicode General Category Zs (space separators), and ZERO WIDTH SPACE (U+200B), which Foundation
+ * counts too. Deliberately NOT newlines - the reference splits on newlines first, then trims lines with
+ * `.whitespaces`, so this must exclude line breaks (unlike Kotlin's [Char.isWhitespace], which would also strip
+ * U+2028 / newlines).
  */
 internal fun Char.isMarkdownWhitespace(): Boolean =
-    this == '\t' || Character.getType(this) == Character.SPACE_SEPARATOR.toInt()
+    this == '\t' || this == '\u200B' || Character.getType(this) == Character.SPACE_SEPARATOR.toInt()
 
 /** Trims leading/trailing [isMarkdownWhitespace] characters - the port of `trimmingCharacters(in: .whitespaces)`. */
 internal fun String.trimMarkdownWhitespace(): String {

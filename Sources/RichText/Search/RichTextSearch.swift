@@ -265,22 +265,45 @@ public enum RichTextSearch {
     }()
 
     private static func isWholeWord(_ range: NSRange, in text: NSString) -> Bool {
-        if range.location > 0, isWordCharacter(text.character(at: range.location - 1)) {
+        if range.location > 0, isWordCharacter(endingAt: range.location, in: text) {
             return false
         }
         let end = NSMaxRange(range)
-        if end < text.length, isWordCharacter(text.character(at: end)) {
+        if end < text.length, isWordCharacter(startingAt: end, in: text) {
             return false
         }
         return true
     }
 
-    private static func isWordCharacter(_ unit: unichar) -> Bool {
-        guard let scalar = Unicode.Scalar(unit) else {
-            // A lone surrogate half: treat as a word character so a match never splits a surrogate pair.
+    // Whether the scalar just before `index` is a word character. A whole scalar, so an emoji (a surrogate pair)
+    // is not one; a pair the index splits counts as one, so a match never splits a pair.
+    private static func isWordCharacter(endingAt index: Int, in text: NSString) -> Bool {
+        let unit = text.character(at: index - 1)
+        if UTF16.isTrailSurrogate(unit), index >= 2, UTF16.isLeadSurrogate(text.character(at: index - 2)) {
+            return isWordScalar(pairing(text.character(at: index - 2), unit))
+        }
+        return isWordScalar(Unicode.Scalar(unit))
+    }
+
+    // Whether the scalar starting at `index` is a word character (see isWordCharacter(endingAt:in:)).
+    private static func isWordCharacter(startingAt index: Int, in text: NSString) -> Bool {
+        let unit = text.character(at: index)
+        if UTF16.isLeadSurrogate(unit), index + 1 < text.length, UTF16.isTrailSurrogate(text.character(at: index + 1)) {
+            return isWordScalar(pairing(unit, text.character(at: index + 1)))
+        }
+        return isWordScalar(Unicode.Scalar(unit))
+    }
+
+    // nil is a lone surrogate half: a word character, so a match never splits a pair.
+    private static func isWordScalar(_ scalar: Unicode.Scalar?) -> Bool {
+        guard let scalar else {
             return true
         }
         return wordCharacters.contains(scalar)
+    }
+
+    private static func pairing(_ lead: unichar, _ trail: unichar) -> Unicode.Scalar? {
+        Unicode.Scalar(0x10000 + ((UInt32(lead) - 0xD800) << 10) + (UInt32(trail) - 0xDC00))
     }
 
     /// The snippet and the match's range within it. Built by collapsing whitespace run by run while
@@ -301,17 +324,18 @@ public enum RichTextSearch {
         let trailingCut = trailingRest.length > 0
             && !text.substring(with: trailingRest).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        var out = leadingCut ? "..." : ""
+        // UTF-16 units, made a String once at the end: a surrogate pair stays one character.
+        var out: [unichar] = leadingCut ? Array("...".utf16) : []
         var matchStart: Int?
         var matchEnd: Int?
         var pendingSpace = false
         var index = start
         while index < end {
             if index == range.location {
-                matchStart = (out as NSString).length + (pendingSpace ? 1 : 0)
+                matchStart = out.count + (pendingSpace ? 1 : 0)
             }
             if index == NSMaxRange(range) {
-                matchEnd = (out as NSString).length
+                matchEnd = out.count
             }
             let unit = text.character(at: index)
             if unit == 0xFFFC {
@@ -326,17 +350,17 @@ public enum RichTextSearch {
                 continue
             }
             if pendingSpace {
-                out += " "
+                out.append(0x20)
                 pendingSpace = false
             }
-            out += String(utf16CodeUnits: [unit], count: 1)
+            out.append(unit)
             index += 1
         }
         if matchEnd == nil {
-            matchEnd = (out as NSString).length
+            matchEnd = out.count
         }
         if trailingCut {
-            out += "..."
+            out += Array("...".utf16)
         }
         let inner: NSRange
         if let matchStart, let matchEnd, matchEnd >= matchStart {
@@ -344,7 +368,7 @@ public enum RichTextSearch {
         } else {
             inner = NSRange(location: 0, length: 0)
         }
-        return (out, inner)
+        return (String(utf16CodeUnits: out, count: out.count), inner)
     }
 }
 

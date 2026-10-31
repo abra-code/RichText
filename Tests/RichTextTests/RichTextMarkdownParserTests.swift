@@ -340,6 +340,13 @@ final class RichTextMarkdownParserTests: XCTestCase {
         }
     }
 
+    // U+200B ZERO WIDTH SPACE is white space for trimming, as Foundation's CharacterSet.whitespaces has it (and the
+    // Android parser): trimmed from a heading, and a line of only U+200B is blank.
+    func testZeroWidthSpaceIsTrimmedWhiteSpace() {
+        XCTAssertEqual(RichTextDocument(markdown: "# Hi\u{200B}").blocks, [.heading(level: 1, [.text("Hi")])])
+        XCTAssertEqual(RichTextDocument(markdown: "a\n\u{200B}\nb").blocks, [.paragraph([.text("a")]), .paragraph([.text("b")])])
+    }
+
     func testNestedLinkAndEmphasisStillParse() {
         // A real (shallow) nest must be unaffected by the depth cap.
         XCTAssertEqual(inlines("[*[bold](u)*](v)"),

@@ -262,10 +262,16 @@ enum RichTextImageLoading {
         applyCached(in: content)
         var placeholderChanged = false
         content.enumerateAttribute(.attachment, in: NSRange(location: 0, length: content.length)) { value, _, _ in
+            guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil else {
+                return
+            }
             // Gate the scheme here so a disallowed URL (file:, javascript:, ...) is never fetched from
-            // disk/network - the attachment stays in its placeholder state.
-            guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil,
-                  let url = attachment.url, RichTextURLPolicy.allowsImage(url) else {
+            // disk/network. Its placeholder says the image is unavailable rather than loading forever.
+            guard let url = attachment.url, RichTextURLPolicy.allowsImage(url) else {
+                if !attachment.hasFailed {
+                    attachment.markFailed()
+                    placeholderChanged = true
+                }
                 return
             }
             // A click approved the image under .onClick; it does not outlive a switch to .never (a clicked

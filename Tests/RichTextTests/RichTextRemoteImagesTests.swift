@@ -95,6 +95,10 @@ final class RichTextRemoteImagesTests: XCTestCase {
         RichTextImageLoading.startLoading(in: content([attachment]), remoteImages: .onClick) {}
         XCTAssertEqual(attachment.hold, .none, "file: is refused outright, not offered for a click")
         XCTAssertFalse(RichTextImageLoading.isFetching(url))
+        // Its placeholder says so, rather than "loading" forever.
+        XCTAssertTrue(attachment.hasFailed)
+        XCTAssertEqual(RichTextImageAttachment.placeholderLabel(alt: "local", url: url, failed: attachment.hasFailed,
+                                                                hold: attachment.hold), "local (unavailable)")
     }
 
     // MARK: - Click
