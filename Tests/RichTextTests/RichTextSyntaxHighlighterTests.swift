@@ -9,36 +9,41 @@ final class RichTextSyntaxHighlighterTests: XCTestCase {
         return RichTextSyntaxHighlighter.tokenize(code, profile: SyntaxProfile.profile(for: language))
     }
 
-    private func text(_ code: String, _ range: NSRange) -> String {
-        return (code as NSString).substring(with: range)
+    // The token's text by its scalar range, checked against its UTF-16 range: both must name the same text.
+    private func text(_ code: String, _ token: RichTextSyntaxHighlighter.Token) -> String {
+        let scalars = Array(code.unicodeScalars)[token.scalarRange]
+        let byScalars = String(String.UnicodeScalarView(scalars))
+        let units = Array(code.utf16)[token.utf16Range]
+        XCTAssertEqual(String(decoding: units, as: UTF16.self), byScalars, "the two ranges disagree")
+        return byScalars
     }
 
     func testKeywordStringNumberComment() {
         let code = "// hi\nlet x = 42\nlet s = \"hello\""
         let found = tokens(code, "swift")
-        XCTAssertTrue(found.contains { $0.type == .comment && text(code, $0.range) == "// hi" })
-        XCTAssertTrue(found.contains { $0.type == .keyword && text(code, $0.range) == "let" })
-        XCTAssertTrue(found.contains { $0.type == .number && text(code, $0.range) == "42" })
-        XCTAssertTrue(found.contains { $0.type == .string && text(code, $0.range) == "\"hello\"" })
+        XCTAssertTrue(found.contains { $0.type == .comment && text(code, $0) == "// hi" })
+        XCTAssertTrue(found.contains { $0.type == .keyword && text(code, $0) == "let" })
+        XCTAssertTrue(found.contains { $0.type == .number && text(code, $0) == "42" })
+        XCTAssertTrue(found.contains { $0.type == .string && text(code, $0) == "\"hello\"" })
     }
 
     func testStringEscapeDoesNotEndEarly() {
         let code = "\"a\\\"b\""              // the literal "a\"b"
         let strings = tokens(code, "swift").filter { $0.type == .string }
         XCTAssertEqual(strings.count, 1)
-        XCTAssertEqual(text(code, strings[0].range), code)
+        XCTAssertEqual(text(code, strings[0]), code)
     }
 
     func testBlockCommentSpansLines() {
         let code = "/* a\n b */ let"
         let found = tokens(code, "swift")
-        XCTAssertTrue(found.contains { $0.type == .comment && text(code, $0.range) == "/* a\n b */" })
-        XCTAssertTrue(found.contains { $0.type == .keyword && text(code, $0.range) == "let" })
+        XCTAssertTrue(found.contains { $0.type == .comment && text(code, $0) == "/* a\n b */" })
+        XCTAssertTrue(found.contains { $0.type == .keyword && text(code, $0) == "let" })
     }
 
     func testCommentStyleIsLanguageSpecific() {
         let code = "# c\nx = 1"
-        XCTAssertTrue(tokens(code, "python").contains { $0.type == .comment && text(code, $0.range) == "# c" })
+        XCTAssertTrue(tokens(code, "python").contains { $0.type == .comment && text(code, $0) == "# c" })
         // '#' is not a comment in Swift (which uses //), so the Swift profile finds no comment here.
         XCTAssertFalse(tokens(code, "swift").contains { $0.type == .comment })
     }
@@ -46,10 +51,32 @@ final class RichTextSyntaxHighlighterTests: XCTestCase {
     func testNumberDoesNotSwallowRangeOperator() {
         // "0...5" must not be lexed as one number; only "0" and "5" are numbers.
         let code = "for i in 0...5 {}"
-        let numbers = tokens(code, "swift").filter { $0.type == .number }.map { text(code, $0.range) }
+        let numbers = tokens(code, "swift").filter { $0.type == .number }.map { text(code, $0) }
         XCTAssertEqual(numbers, ["0", "5"])
     }
 
+    // Outside the Basic Multilingual Plane and with a combining mark, UTF-16 and scalar offsets differ; each
+    // range must still name the token's text.
+    func testRangesInBothUnitsPastWideCharacters() throws {
+        let code = "let s = \"e\u{301}\u{1F600}\" // \u{1F600}x\nlet"
+        let found = tokens(code, "swift")
+        XCTAssertTrue(found.contains { $0.type == .string && text(code, $0) == "\"e\u{301}\u{1F600}\"" })
+        XCTAssertTrue(found.contains { $0.type == .comment && text(code, $0) == "// \u{1F600}x" })
+        let last = try XCTUnwrap(found.last)
+        XCTAssertEqual(text(code, last), "let")
+        XCTAssertEqual(last.utf16Range, (code.utf16.count - 3)..<code.utf16.count)
+        XCTAssertEqual(last.scalarRange, (code.unicodeScalars.count - 3)..<code.unicodeScalars.count)
+    }
+
+    // The language key is trimmed as trimmingCharacters(in: .whitespaces) trims, which includes U+200B.
+    func testLanguageKeyIsTrimmedLikeFoundationsWhitespace() {
+        XCTAssertTrue(tokens("let", " swift\u{200B}\t").contains { $0.type == .keyword })
+        XCTAssertTrue(tokens("x = 1 # c", "\u{3000}python").contains { $0.type == .comment })
+    }
+
+    // MARK: - Applying colors (Apple platforms)
+
+    #if !os(Linux)
     func testAppliesColorThroughBuilder() {
         let doc = RichTextDocument(markdown: "```swift\nreturn 0\n```")
         let attributed = RichTextAttributedString.make(doc, theme: .default)
@@ -68,4 +95,5 @@ final class RichTextSyntaxHighlighterTests: XCTestCase {
         let color = attributed.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? RTVColor
         XCTAssertEqual(color, RTVColors.label)
     }
+    #endif
 }
