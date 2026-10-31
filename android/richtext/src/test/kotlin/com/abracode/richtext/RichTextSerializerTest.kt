@@ -138,10 +138,12 @@ class RichTextSerializerTest {
     // MARK: - Image scheme gating
 
     @Test fun htmlFileImageFallsBackToAltText() {
+        // A local file: image that is not loaded falls back to the alt text: an <img src="file:..."> means nothing
+        // once the HTML is pasted elsewhere. (A loaded one is embedded as a data: URI.)
         val doc = RichTextDocument(listOf(RichTextBlock.Paragraph(listOf(RichTextInline.Image("secret", "file:///etc/passwd")))))
         val html = RichTextHTMLSerializer.fragment(doc)
         assertFalse("must never emit a file: image src", html.contains("file:"))
-        assertFalse("a disallowed image scheme must not become an <img>", html.contains("<img"))
+        assertFalse("an unloaded file: image must not become an <img>", html.contains("<img"))
         assertTrue("alt text should remain", html.contains("secret"))
     }
 

@@ -145,12 +145,13 @@ public enum RichTextHTMLSerializer {
                     // load-time scheme gate are ever resolved, so an embedded data: URI here is safe.
                     let src = "data:" + loaded.format.mimeType + ";base64," + loaded.data.base64EncodedString()
                     out += "<img src=\"" + src + "\" alt=\"" + escapeAttribute(alt) + "\" style=\"max-width:100%\">"
-                } else if let parsed = URL(string: url), RichTextURLPolicy.allowsImage(parsed) {
+                } else if let parsed = URL(string: url), RichTextURLPolicy.allowsImage(parsed),
+                          parsed.scheme?.lowercased() != "file" {
                     // Unresolved but an allow-listed scheme (http/https/data): keep the URL as the src.
                     out += "<img src=\"" + escapeAttribute(url) + "\" alt=\"" + escapeAttribute(alt) + "\" style=\"max-width:100%\">"
                 } else {
-                    // Disallowed scheme (e.g. file:) and not embedded: fall back to the alt text - never emit
-                    // <img src="file:..."> (a local-file read / exfiltration vector).
+                    // A disallowed scheme, or a local file: image not loaded: fall back to the alt text. A file: src
+                    // means nothing once the HTML is pasted elsewhere.
                     out += escape(alt)
                 }
             case .lineBreak:

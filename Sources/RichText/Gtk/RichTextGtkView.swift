@@ -90,14 +90,22 @@ public final class RichTextGtkView {
         followStyleChanges()
     }
 
-    public convenience init(markdown: String, theme: RichTextTheme = .default,
+    /// `baseURL` is the document's own location, for Markdown read from a file or a web page: relative image
+    /// paths (`img/a.png`) resolve against it (see `RichTextDocument.resolvingImageURLs(against:)`). Without
+    /// it they cannot load.
+    public convenience init(markdown: String, baseURL: URL? = nil, theme: RichTextTheme = .default,
                             remoteImages: RichTextRemoteImages = .automatic) {
-        self.init(document: RichTextDocument(markdown: markdown), theme: theme, remoteImages: remoteImages)
+        self.init(document: Self.parse(markdown, baseURL: baseURL), theme: theme, remoteImages: remoteImages)
     }
 
-    /// Shows `markdown`, parsed.
-    public func setMarkdown(_ markdown: String) {
-        document = RichTextDocument(markdown: markdown)
+    /// Shows `markdown`, parsed, with relative image paths resolved against `baseURL` as in `init(markdown:)`.
+    public func setMarkdown(_ markdown: String, baseURL: URL? = nil) {
+        document = Self.parse(markdown, baseURL: baseURL)
+    }
+
+    private static func parse(_ markdown: String, baseURL: URL?) -> RichTextDocument {
+        let document = RichTextDocument(markdown: markdown)
+        return baseURL.map { document.resolvingImageURLs(against: $0) } ?? document
     }
 
     /// Reads the colors again from the GTK style and recolors the text in place (selection and scroll stay).

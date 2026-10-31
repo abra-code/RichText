@@ -134,13 +134,31 @@ final class RichTextGtkViewTests: XCTestCase {
         XCTAssertEqual(slot.placeholderText, "chart\nNot loaded from 127.0.0.1: remote images are off")
     }
 
-    func testFileImageIsNeverRead() throws {
-        let view = RichTextGtkView(markdown: "![secret](file:///etc/hostname)")
+    // A picture beside a Markdown file, by a relative path resolved against the document's location: it loads
+    // even with remote images off, since showing it sends nothing anywhere.
+    func testLocalImageBesideTheDocumentLoads() throws {
+        let folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("richtext-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("img"), withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let png = try XCTUnwrap(Data(base64Encoded: try pngDataURL(width: 9, height: 7)
+            .replacingOccurrences(of: "data:image/png;base64,", with: "")))
+        try png.write(to: folder.appendingPathComponent("img/dot.png"))
+        let view = RichTextGtkView(markdown: "![dot](img/dot.png)", baseURL: folder.appendingPathComponent("read.md"),
+                                   remoteImages: .never)
+        let slot = try XCTUnwrap(view.imageSlots.first)
+        XCTAssertEqual(slot.hold, .none)
+        pump(until: { slot.loaded != nil })
+        XCTAssertEqual(slot.loaded?.pixelWidth, 9)
+    }
+
+    // Without the document's location a relative path names nothing: unavailable, never guessed.
+    func testRelativeImageWithoutABaseIsUnavailable() throws {
+        let view = RichTextGtkView(markdown: "![dot](img/dot.png)")
         let slot = try XCTUnwrap(view.imageSlots.first)
         XCTAssertTrue(slot.failed)
-        XCTAssertEqual(slot.placeholderText, "secret (unavailable)")
-        pump(milliseconds: 100)
-        XCTAssertNil(slot.loaded)
+        XCTAssertEqual(slot.placeholderText, "dot (unavailable)")
     }
 
     private func pump(until done: () -> Bool) {

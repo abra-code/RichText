@@ -30,10 +30,12 @@ class RichTextURLPolicyTest {
         assertTrue(RichTextURLPolicy.allowsImage("https://x.test/y.png"))
         assertTrue(RichTextURLPolicy.allowsImage("http://x.test/y.png"))
         assertTrue(RichTextURLPolicy.allowsImage("data:image/png;base64,AAAA"))
+        assertTrue("local images load", RichTextURLPolicy.allowsImage("file:///Users/me/notes/a.png"))
+        assertTrue("schemes are case-insensitive", RichTextURLPolicy.allowsImage("FILE:///a.png"))
     }
 
     @Test fun rejectedImageSchemes() {
-        assertFalse("a file: image must never be fetched from disk", RichTextURLPolicy.allowsImage("file:///etc/passwd"))
+        assertFalse("a relative path is resolved by the caller first, never guessed", RichTextURLPolicy.allowsImage("img/a.png"))
         assertFalse(RichTextURLPolicy.allowsImage("javascript:alert(1)"))
     }
 }

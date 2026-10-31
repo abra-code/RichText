@@ -164,12 +164,12 @@ final class RichTextSerializerTests: XCTestCase {
     // MARK: - Image scheme gating
 
     func testHTMLFileImageFallsBackToAltText() {
-        // A file: image from untrusted Markdown must never become an <img src="file:..."> (local-file read /
-        // exfiltration on paste); it falls back to the alt text.
+        // A local file: image that is not loaded falls back to the alt text: an <img src="file:..."> means nothing
+        // once the HTML is pasted elsewhere. (A loaded one is embedded as a data: URI.)
         let doc = RichTextDocument(blocks: [.paragraph([.image(alt: "secret", url: "file:///etc/passwd")])])
         let html = RichTextHTMLSerializer.fragment(from: doc)
         XCTAssertFalse(html.contains("file:"), "must never emit a file: image src")
-        XCTAssertFalse(html.contains("<img"), "a disallowed image scheme must not become an <img>")
+        XCTAssertFalse(html.contains("<img"), "an unloaded file: image must not become an <img>")
         XCTAssertTrue(html.contains("secret"), "alt text should remain")
     }
 

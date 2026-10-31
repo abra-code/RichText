@@ -28,6 +28,10 @@ RichTextPasteboard.write(doc)
 `RichText` is read-only-but-selectable and self-sizes to its content for the proposed width, so it
 drops into a `ScrollView` / `VStack` / a chat transcript directly. See `Demo/` for a runnable app.
 
+## Local images
+
+Markdown read from a file names pictures beside it by relative paths (`![](img/diagram.png)`). Pass the document's own location and they load: `RichText(markdown: text, baseURL: fileURL)`, `RichTextGtkView(markdown: text, baseURL: fileURL)`, `RichText(markdown, baseUrl = ...)` on Android, or `RichTextDocument.resolvingImageURLs(against:)` for a document built another way. Without it, a relative path names nothing and shows as unavailable. Local `file:` images, like `data:` images, send nothing anywhere and always show. Against a web page's address, relative paths become remote images, which `remoteImages` governs.
+
 ## Remote images
 
 Fetching an image is itself a disclosure: the request tells the image's host that the document was shown, from which address, and anything the URL carries. Markdown written by someone else, such as a model or an agent, can therefore use an image to send data wherever it likes the moment it renders. `RichText(...).remoteImages(_:)` decides when http and https images are fetched:
@@ -35,7 +39,7 @@ Fetching an image is itself a disclosure: the request tells the image's host tha
 - `.onClick`: a placeholder shows the image's alt text and host ("Click to load from example.com", "Tap" on iOS); a click on it fetches that one image.
 - `.never`: the placeholder says remote images are off.
 
-`data:` images carry their bytes in the document and always show; `file:` images are never read (`RichTextURLPolicy`). An image already in the shared cache shows in every mode, since showing cached bytes sends nothing. The Android port does not have this option yet; it fetches as `.automatic` does.
+`data:` and local `file:` images always show. An image already in the shared cache shows in every mode, since showing cached bytes sends nothing. The Android port does not have this option yet; it fetches as `.automatic` does.
 
 ## Find and highlight
 

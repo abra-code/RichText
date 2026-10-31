@@ -4,7 +4,7 @@
     "inlines": [
       {
         "type": "text",
-        "value": "Every image in this document fails on purpose, to show the fallbacks: example.test never resolves, the data: image holds only a PNG signature, and file: images are never read."
+        "value": "Every image in this document fails on purpose, to show the fallbacks: example.test never resolves, the data: image holds only a PNG signature, and the local file does not exist."
       }
     ]
   },
@@ -82,12 +82,12 @@
     "inlines": [
       {
         "type": "text",
-        "value": "A disallowed file image "
+        "value": "A missing local image "
       },
       {
         "type": "image",
         "alt": "local",
-        "url": "file:///etc/passwd"
+        "url": "file:///nonexistent/missing.png"
       },
       {
         "type": "text",

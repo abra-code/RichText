@@ -47,6 +47,7 @@ func excludingAllBut(_ kept: [String], in target: String) -> [String] {
 let portableSources = [
     "Gtk",
     "Markdown",
+    "Model/RichTextDocument+BaseURL.swift",
     "Model/RichTextModel.swift",
     "Model/RichTextTheme.swift",
     "Rendering/RichTextAccessibility.swift",
@@ -62,6 +63,7 @@ let portableSources = [
 let portableTests = [
     "Gtk",
     "RichTextAccessibilityTests.swift",
+    "RichTextBaseURLTests.swift",
     "RichTextFixtureEmitterTests.swift",
     "RichTextMarkdownParserTests.swift",
     "RichTextSearchTests.swift",

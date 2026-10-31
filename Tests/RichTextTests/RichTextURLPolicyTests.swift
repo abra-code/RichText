@@ -32,11 +32,13 @@ final class RichTextURLPolicyTests: XCTestCase {
         XCTAssertTrue(RichTextURLPolicy.allowsImage(URL(string: "https://x.test/y.png")!))
         XCTAssertTrue(RichTextURLPolicy.allowsImage(URL(string: "http://x.test/y.png")!))
         XCTAssertTrue(RichTextURLPolicy.allowsImage(URL(string: "data:image/png;base64,AAAA")!))
+        XCTAssertTrue(RichTextURLPolicy.allowsImage(URL(string: "file:///Users/me/notes/a.png")!), "local images load")
+        XCTAssertTrue(RichTextURLPolicy.allowsImage(URL(string: "FILE:///a.png")!), "schemes are case-insensitive")
     }
 
     func testRejectedImageSchemes() {
-        XCTAssertFalse(RichTextURLPolicy.allowsImage(URL(string: "file:///etc/passwd")!),
-                       "a file: image must never be fetched from disk")
+        XCTAssertFalse(RichTextURLPolicy.allowsImage(URL(string: "img/a.png")!),
+                       "a relative path is resolved by the caller first (resolvingImageURLs), never guessed")
         XCTAssertFalse(RichTextURLPolicy.allowsImage(URL(string: "javascript:alert(1)")!))
     }
 

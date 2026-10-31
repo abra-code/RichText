@@ -3,8 +3,8 @@
 // One image in the GTK view: the widget at the image's child anchor. It is a placeholder (a framed box with the
 // alt text, or for a held remote image the host a click would contact) until the image loads through
 // AsyncImageCache, then the image at its display size, capped at the same width as on Apple platforms. Loading
-// follows RichTextRemoteImages: automatic, on a click on the placeholder, or never; data: images always load,
-// and an image whose scheme is not allow-listed (file:) never does.
+// follows RichTextRemoteImages: automatic, on a click on the placeholder, or never; data: and local file: images
+// always load, and an image whose scheme is not allow-listed (javascript:, a relative path) never does.
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -69,7 +69,7 @@ final class RichTextGtkImageSlot {
             return
         }
         guard let url, let request, RichTextURLPolicy.allowsImage(url) else {
-            // Not an allow-listed scheme (file:, javascript:, a malformed URL): never read.
+            // Not an allow-listed scheme (javascript:, a relative path, a malformed URL): never read.
             failed = true
             refresh()
             return

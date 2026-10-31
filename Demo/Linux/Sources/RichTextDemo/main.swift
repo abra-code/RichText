@@ -87,32 +87,34 @@ func resourceFolder(besideProgram name: String, inRepository path: String) -> UR
     } ?? inRepository
 }
 
-// Images that load: two local files and two remote pictures. RichText never reads file: URLs, so the local
-// files are embedded as data: URLs.
-func imagesMarkdown() -> String {
-    let folder = resourceFolder(besideProgram: "Images", inRepository: "Demo/Linux/Images")
-    func embedded(_ name: String, _ type: String) -> String {
-        guard let data = try? Data(contentsOf: folder.appendingPathComponent(name)) else {
-            warn("cannot read the demo image \(folder.appendingPathComponent(name).path)")
-            return "data:,missing-\(name)"
-        }
-        return "data:\(type);base64,\(data.base64EncodedString())"
-    }
-    return """
+// A document the menu offers: its name, its Markdown, and where it lives (relative image paths resolve against
+// that place).
+struct Document {
+    let name: String
+    let markdown: String
+    var baseURL: URL?
+}
+
+// Images that load: two local files beside the demo, by relative paths, and two remote pictures.
+func imagesDocument() -> Document {
+    // The folder that holds Images/, as if this document were a file in it.
+    let folder = resourceFolder(besideProgram: "Images", inRepository: "Demo/Linux/Images").deletingLastPathComponent()
+    let markdown = """
     # Images
 
     ## Local
 
-    Two image files shipped with the demo, embedded in the Markdown as `data:` URLs (RichText never reads \
-    `file:` URLs). They always show, whatever the Remote Images menu says.
+    Two image files shipped with the demo, named by paths relative to the document's folder \
+    (`Images/actionui.png`). Showing them sends nothing anywhere, so they always show, whatever the Remote Images \
+    menu says.
 
     The ActionUI icon:
 
-    ![ActionUI icon](\(embedded("actionui.png", "image/png")))
+    ![ActionUI icon](Images/actionui.png)
 
     The abracode cube, with transparency, so the page's background shows through it in light and dark:
 
-    ![abracode cube](\(embedded("abracode.png", "image/png")))
+    ![abracode cube](Images/abracode.png)
 
     ## Remote
 
@@ -129,21 +131,22 @@ func imagesMarkdown() -> String {
 
     For images that fail on purpose and their fallbacks, open the images-broken document.
     """
+    return Document(name: "Images", markdown: markdown, baseURL: folder)
 }
 
 // The shared Markdown fixtures (Fixtures/markdown).
-func fixtureDocuments() -> [(name: String, markdown: String)] {
+func fixtureDocuments() -> [Document] {
     let folder = resourceFolder(besideProgram: "Fixtures/markdown", inRepository: "Fixtures/markdown")
     let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
     return names.filter { $0.hasSuffix(".md") }.sorted().compactMap { name in
         guard let text = try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8) else {
             return nil
         }
-        return (String(name.dropLast(3)), text)
+        return Document(name: String(name.dropLast(3)), markdown: text, baseURL: folder)
     }
 }
 
-let documents = [("Sample", sampleMarkdown), ("Images", imagesMarkdown())] + fixtureDocuments()
+let documents = [Document(name: "Sample", markdown: sampleMarkdown), imagesDocument()] + fixtureDocuments()
 
 // MARK: - Signals
 
@@ -239,19 +242,19 @@ func buildWindow(_ application: UnsafeMutablePointer<GtkApplication>) {
 
     // Header bar: the document, the remote-image policy, find, copy.
     let header = gtk_header_bar_new()!
-    let picker = dropDown(documents.map(\.0))
+    let picker = dropDown(documents.map(\.name))
     gtk_widget_set_tooltip_text(picker, "Document")
     connect(UnsafeMutableRawPointer(picker), "notify::selected", notify: true) {
         let index = Int(gtk_drop_down_get_selected(OpaquePointer(picker)))
         if documents.indices.contains(index) {
-            MainActor.assumeIsolated { view.setMarkdown(documents[index].1) }
+            MainActor.assumeIsolated { view.setMarkdown(documents[index].markdown, baseURL: documents[index].baseURL) }
         }
     }
     if let firstDocument {
-        if let index = documents.firstIndex(where: { $0.0 == firstDocument }) {
+        if let index = documents.firstIndex(where: { $0.name == firstDocument }) {
             gtk_drop_down_set_selected(OpaquePointer(picker), guint(index))
         } else {
-            warn("no document named \(firstDocument); the names are \(documents.map(\.0).joined(separator: ", "))")
+            warn("no document named \(firstDocument); the names are \(documents.map(\.name).joined(separator: ", "))")
         }
     }
     let policies: [RichTextRemoteImages] = [.automatic, .onClick, .never]

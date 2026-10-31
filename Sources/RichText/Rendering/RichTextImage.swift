@@ -44,7 +44,7 @@ final class RichTextImageAttachment: NSTextAttachment {
         self.maxWidth = maxWidth
         super.init(data: nil, ofType: nil)
         // If this URL was already fetched (e.g. the attributed string was rebuilt), show it right away.
-        // cachedImage gates the scheme (a file: image is never fetched, so it is never in the cache) and uses
+        // cachedImage gates the scheme (a disallowed image is never fetched, so it is never in the cache) and uses
         // this attachment's maxWidth so the variant key matches what a load would store.
         if let url, let cached = RichTextImageLoading.cachedImage(for: url, maxWidth: maxWidth) {
             loadedImage = cached
@@ -214,7 +214,7 @@ enum RichTextImageLoading {
     }
 
     nonisolated static func cachedImage(for url: URL, maxWidth: CGFloat = defaultMaxWidth) -> RTVImage? {
-        // Disallowed schemes (file:, javascript:, ...) are never loaded, so never cached - short-circuit.
+        // Disallowed schemes (javascript:, relative paths, ...) are never loaded, so never cached - short-circuit.
         guard RichTextURLPolicy.allowsImage(url) else {
             return nil
         }
@@ -265,8 +265,8 @@ enum RichTextImageLoading {
             guard let attachment = value as? RichTextImageAttachment, attachment.loadedImage == nil else {
                 return
             }
-            // Gate the scheme here so a disallowed URL (file:, javascript:, ...) is never fetched from
-            // disk/network. Its placeholder says the image is unavailable rather than loading forever.
+            // Gate the scheme here so a disallowed URL (javascript:, a relative path, ...) is never fetched. Its
+            // placeholder says the image is unavailable rather than loading forever.
             guard let url = attachment.url, RichTextURLPolicy.allowsImage(url) else {
                 if !attachment.hasFailed {
                     attachment.markFailed()

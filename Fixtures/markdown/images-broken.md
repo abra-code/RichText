@@ -1,4 +1,4 @@
-Every image in this document fails on purpose, to show the fallbacks: example.test never resolves, the data: image holds only a PNG signature, and file: images are never read.
+Every image in this document fails on purpose, to show the fallbacks: example.test never resolves, the data: image holds only a PNG signature, and the local file does not exist.
 
 A block image on its own line:
 
@@ -10,4 +10,4 @@ An image with an empty alt: ![](https://example.test/nameless.png)
 
 A data-URI image ![pixel](data:image/png;base64,iVBORw0KGgo=) inline.
 
-A disallowed file image ![local](file:///etc/passwd) falls back to alt text.
+A missing local image ![local](file:///nonexistent/missing.png) falls back to alt text.

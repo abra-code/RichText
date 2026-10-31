@@ -56,6 +56,7 @@ import com.abracode.richtext.RichTextURLPolicy
 import com.abracode.richtext.model.RichTextBlock
 import com.abracode.richtext.model.RichTextDocument
 import com.abracode.richtext.model.RichTextInline
+import com.abracode.richtext.model.resolvingImageUrls
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 
@@ -119,6 +120,9 @@ fun RichText(
 /**
  * Parses [markdown] and renders it. The parse is memoized on the string so streaming re-renders (the chat use
  * case) only re-parse when the text actually changes; the parser's totality makes re-parsing partial input safe.
+ * [baseUrl] is the document's own location, for Markdown read from a file or a web page: relative image paths
+ * (`img/a.png`) resolve against it (see [resolvingImageUrls]); without it they cannot load. It must be a URL
+ * string, such as `Uri.fromFile(file).toString()`.
  */
 @Composable
 fun RichText(
@@ -128,8 +132,12 @@ fun RichText(
     highlights: RichTextHighlights? = null,
     onCurrentMatchBounds: ((Rect?) -> Unit)? = null,
     find: RichTextFindController? = null,
+    baseUrl: String? = null,
 ) {
-    val document = remember(markdown) { RichTextDocument.parse(markdown) }
+    val document = remember(markdown, baseUrl) {
+        val parsed = RichTextDocument.parse(markdown)
+        if (baseUrl != null) parsed.resolvingImageUrls(baseUrl) else parsed
+    }
     RichText(document, theme, modifier, highlights, onCurrentMatchBounds, find)
 }
 
@@ -513,7 +521,8 @@ private fun BlockImageView(image: RichTextInline.Image, scope: RichTextScope) {
     )
 }
 
-// A rounded bordered box showing alt text, for images whose scheme is not allow-listed (e.g. file:) - mirrors
+// A rounded bordered box showing alt text, for images whose scheme is not allow-listed (javascript:, a relative
+// path) - mirrors
 // the Swift image placeholder (codeFill fill, separator border, radius 6, secondary label) without any fetch.
 @Composable
 private fun AltPlaceholderBox(alt: String, scope: RichTextScope, modifier: Modifier = Modifier) {

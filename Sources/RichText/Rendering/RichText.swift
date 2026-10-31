@@ -57,8 +57,13 @@ public struct RichText: View {
         self.accessibilityText = RichTextAccessibility.label(for: document)
     }
 
-    public init(markdown: String, theme: RichTextTheme = .default, engine: RichTextEngine = .textKit1) {
-        self.init(RichTextDocument(markdown: markdown), theme: theme, engine: engine)
+    /// `baseURL` is the document's own location, for Markdown read from a file or a web page: relative image
+    /// paths (`img/a.png`) resolve against it (see `RichTextDocument.resolvingImageURLs(against:)`). Without
+    /// it they cannot load.
+    public init(markdown: String, baseURL: URL? = nil, theme: RichTextTheme = .default,
+                engine: RichTextEngine = .textKit1) {
+        let document = RichTextDocument(markdown: markdown)
+        self.init(baseURL.map { document.resolvingImageURLs(against: $0) } ?? document, theme: theme, engine: engine)
     }
 
     public init(attributed: NSAttributedString, engine: RichTextEngine = .textKit1) {

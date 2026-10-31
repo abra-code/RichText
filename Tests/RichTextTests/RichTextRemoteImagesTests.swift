@@ -1,7 +1,7 @@
 // Tests/RichTextTests/RichTextRemoteImagesTests.swift
 //
 // RichTextRemoteImages: under .onClick and .never a remote (http / https) image is held with a placeholder and
-// never fetched until the user clicks it (.onClick only); data: images load in every mode; .automatic fetches
+// never fetched until the user clicks it (.onClick only); data: and local file: images load in every mode; .automatic fetches
 // at once, as before. Fetching is the thing that matters, so the assertions are about RichTextImageLoading's
 // running fetches (isFetching): a URL being fetched has been handed to the network. Documents that need an
 // image while its fetch runs wait on that fetch and are all told when it ends.
@@ -89,11 +89,37 @@ final class RichTextRemoteImagesTests: XCTestCase {
         }
     }
 
-    func testAFileImageIsNeitherHeldNorRead() {
-        let url = URL(string: "file:///etc/passwd")!
+    func testALocalFileImageLoadsInEveryMode() throws {
+        // A 1x1 PNG beside a document on disk; showing it sends nothing anywhere.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")!
+        for policy in [RichTextRemoteImages.onClick, .never] {
+            let url = folder.appendingPathComponent("\(policy.rawValue).png")
+            try png.write(to: url)
+            let attachment = RichTextImageAttachment(alt: "local", url: url)
+            let loaded = expectation(description: "\(policy)")
+            loaded.assertForOverFulfill = false
+            RichTextImageLoading.startLoading(in: content([attachment]), remoteImages: policy) {
+                if attachment.loadedImage != nil || RichTextImageLoading.cachedImage(for: url) != nil {
+                    loaded.fulfill()
+                }
+            }
+            XCTAssertEqual(attachment.hold, .none, "\(policy): a local image is never held")
+            wait(for: [loaded], timeout: 5)
+        }
+    }
+
+    func testARelativeImageIsNeitherHeldNorRead() {
+        // A relative path is resolved against the document's location by the caller (resolvingImageURLs);
+        // unresolved, it names nothing to load.
+        let url = URL(string: "img/a.png")!
         let attachment = RichTextImageAttachment(alt: "local", url: url)
         RichTextImageLoading.startLoading(in: content([attachment]), remoteImages: .onClick) {}
-        XCTAssertEqual(attachment.hold, .none, "file: is refused outright, not offered for a click")
+        XCTAssertEqual(attachment.hold, .none, "a relative path is refused outright, not offered for a click")
         XCTAssertFalse(RichTextImageLoading.isFetching(url))
         // Its placeholder says so, rather than "loading" forever.
         XCTAssertTrue(attachment.hasFailed)

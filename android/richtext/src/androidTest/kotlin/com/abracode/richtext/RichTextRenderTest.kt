@@ -84,8 +84,9 @@ class RichTextRenderTest {
     }
 
     @Test fun disallowedImageFallsBackToAltText() {
-        // A file: image scheme is rejected; the renderer shows the alt-text placeholder instead of fetching.
-        setMarkdown("![secret](file:///etc/passwd)")
+        // A relative path without the document's location names nothing; the renderer shows the alt-text
+        // placeholder instead of guessing.
+        setMarkdown("![secret](img/secret.png)")
         composeTestRule.onNodeWithText("secret (unavailable)", substring = true, useUnmergedTree = true).assertExists()
     }
 

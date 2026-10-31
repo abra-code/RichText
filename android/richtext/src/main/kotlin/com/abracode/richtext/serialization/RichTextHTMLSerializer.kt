@@ -151,12 +151,12 @@ object RichTextHTMLSerializer {
                         // load-time scheme gate are ever resolved, so an embedded data: URI here is safe.
                         val src = "data:" + loaded.format.mimeType + ";base64," + Base64.getEncoder().encodeToString(loaded.data)
                         out.append("<img src=\"").append(src).append("\" alt=\"").append(escapeAttribute(node.alt)).append("\" style=\"max-width:100%\">")
-                    } else if (RichTextURLPolicy.allowsImage(node.url)) {
+                    } else if (RichTextURLPolicy.allowsImage(node.url) && !node.url.startsWith("file:", ignoreCase = true)) {
                         // Unresolved but an allow-listed scheme (http/https/data): keep the URL as the src.
                         out.append("<img src=\"").append(escapeAttribute(node.url)).append("\" alt=\"").append(escapeAttribute(node.alt)).append("\" style=\"max-width:100%\">")
                     } else {
-                        // Disallowed scheme (e.g. file:) and not embedded: fall back to the alt text - never emit
-                        // <img src="file:..."> (a local-file read / exfiltration vector).
+                        // A disallowed scheme, or a local file: image not loaded: fall back to the alt text. A file:
+                        // src means nothing once the HTML is pasted elsewhere.
                         out.append(escape(node.alt))
                     }
                 }
