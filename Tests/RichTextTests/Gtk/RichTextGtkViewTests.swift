@@ -11,18 +11,8 @@ import CRichTextGtk
 @MainActor
 final class RichTextGtkViewTests: XCTestCase {
 
-    // Whether GTK could open a display, asked once: after a failed gtk_init_check, GTK aborts on the next one.
-    private static var hasDisplay: Bool?
-
     override func setUp() async throws {
-        let ready = await MainActor.run { () -> Bool in
-            if let known = Self.hasDisplay {
-                return known
-            }
-            let opened = gtk_init_check() != 0
-            Self.hasDisplay = opened
-            return opened
-        }
+        let ready = await MainActor.run { gtkDisplay() }
         try XCTSkipUnless(ready, "no display")
     }
 

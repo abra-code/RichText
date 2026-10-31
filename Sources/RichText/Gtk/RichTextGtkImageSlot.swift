@@ -17,7 +17,7 @@ import CRichTextGtk
 @MainActor
 final class RichTextGtkImageSlot {
     /// The width cap in points, and the decode width in pixels (as RichTextImageLoading on Apple platforms).
-    static let maxWidth = 320.0
+    nonisolated static let maxWidth = 320.0
     static let placeholderSize = (width: 240.0, height: 120.0)
 
     /// The widget placed at the anchor: a box holding the placeholder or the picture.
