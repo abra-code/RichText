@@ -50,6 +50,7 @@ let portableSources = [
     "Model/RichTextModel.swift",
     "Model/RichTextTheme.swift",
     "Rendering/RichTextAccessibility.swift",
+    "Rendering/RichTextImagePlaceholder.swift",
     "Rendering/RichTextSyntaxTokenizer.swift",
     "RichTextURLPolicy.swift",
     "Serialization/RichTextHTMLSerializer.swift",
@@ -72,12 +73,16 @@ let package = Package(
     products: [
         .library(name: "RichText", targets: ["RichText"]),
     ],
+    dependencies: [
+        // The image loader and cache; 0.2.0 is its first version with the Linux port.
+        .package(url: "https://github.com/abra-code/AsyncImageCache", from: "0.2.0"),
+    ],
     targets: [
         // GTK 4's C API (GtkTextView, GtkTextBuffer, Pango), for the renderer.
         .systemLibrary(name: "CRichTextGtk", pkgConfig: "gtk4"),
         .target(
             name: "RichText",
-            dependencies: ["CRichTextGtk"],
+            dependencies: ["CRichTextGtk", .product(name: "AsyncImageCache", package: "AsyncImageCache")],
             exclude: excludingAllBut(portableSources, in: "Sources/RichText"),
             sources: portableSources
         ),

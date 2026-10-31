@@ -5,9 +5,10 @@
 // widget alive (one reference of its own) as long as the object lives.
 //
 // Links open on a click (not on a drag that selects text) through GtkUriLauncher, the system's handler for the
-// URL, as the Apple text views open theirs; the pointer is a hand over a link. Colors follow the GTK style:
-// a plain GTK program's light/dark switch (GtkSettings) recolors the text in place, and a host whose style
-// changes another way (libadwaita's AdwStyleManager) calls refreshColors().
+// URL, as the Apple text views open theirs; the pointer is a hand over a link. Images load through
+// AsyncImageCache into widgets at their places in the text (RichTextGtkImageSlot), as remoteImages allows.
+// Colors follow the GTK style: a plain GTK program's light/dark switch (GtkSettings) recolors the text in
+// place, and a host whose style changes another way (libadwaita's AdwStyleManager) calls refreshColors().
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -29,6 +30,17 @@ public final class RichTextGtkView {
     }
 
     /// The metrics the document is laid out with. Setting it rebuilds the text.
+    /// Whether remote (http, https) images load: automatically, on a click on their placeholder, or never.
+    /// Pass it to init so it holds from the first load; changing it later applies to the images not loaded
+    /// yet (a load already started goes on).
+    public var remoteImages: RichTextRemoteImages = .automatic {
+        didSet {
+            for slot in imageSlots {
+                slot.start(policy: remoteImages)
+            }
+        }
+    }
+
     public var theme: RichTextTheme {
         didSet {
             rebuild()
@@ -49,14 +61,17 @@ public final class RichTextGtkView {
     private var settings: OpaquePointer?          // the GtkSettings the handlers below are connected to
     private var settingsHandlers: [gulong] = []
     private(set) var links: [RichTextGtkLink] = []
+    private(set) var imageSlots: [RichTextGtkImageSlot] = []
 
     private var widgetPointer: UnsafeMutablePointer<GtkWidget> {
         UnsafeMutableRawPointer(textView).assumingMemoryBound(to: GtkWidget.self)
     }
 
-    public init(document: RichTextDocument, theme: RichTextTheme = .default) {
+    public init(document: RichTextDocument, theme: RichTextTheme = .default,
+                remoteImages: RichTextRemoteImages = .automatic) {
         self.document = document
         self.theme = theme
+        self.remoteImages = remoteImages
         let made = gtk_text_view_new()!
         g_object_ref_sink(UnsafeMutableRawPointer(made))
         widget = OpaquePointer(made)
@@ -70,8 +85,9 @@ public final class RichTextGtkView {
         followStyleChanges()
     }
 
-    public convenience init(markdown: String, theme: RichTextTheme = .default) {
-        self.init(document: RichTextDocument(markdown: markdown), theme: theme)
+    public convenience init(markdown: String, theme: RichTextTheme = .default,
+                            remoteImages: RichTextRemoteImages = .automatic) {
+        self.init(document: RichTextDocument(markdown: markdown), theme: theme, remoteImages: remoteImages)
     }
 
     /// Shows `markdown`, parsed.
@@ -103,6 +119,15 @@ public final class RichTextGtkView {
         builder = made
         links = made.links
         gtk_text_view_set_buffer(textView, buffer)
+        // Each image's widget at its anchor; the slots load (or hold) their images.
+        imageSlots = made.images.map { image in
+            let slot = RichTextGtkImageSlot(alt: image.alt, url: image.url)
+            gtk_text_view_add_child_at_anchor(textView, slot.widget, image.anchor)
+            return slot
+        }
+        for slot in imageSlots {
+            slot.start(policy: remoteImages)
+        }
     }
 
     private func currentPalette() -> RichTextGtkPalette {

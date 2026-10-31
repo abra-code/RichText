@@ -54,6 +54,15 @@ struct RichTextGtkLink: Equatable {
     let url: URL
 }
 
+/// An image's place in the buffer: a child anchor (one character, U+FFFC) the view puts the image's widget
+/// at, with what the widget shows.
+struct RichTextGtkImage {
+    let anchor: UnsafeMutablePointer<GtkTextChildAnchor>   // owned by the buffer
+    let offset: Int
+    let alt: String
+    let url: URL?
+}
+
 @MainActor
 final class RichTextGtkBuilder {
     private let buffer: UnsafeMutablePointer<GtkTextBuffer>
@@ -66,6 +75,7 @@ final class RichTextGtkBuilder {
     private var spacerStart: Int?       // where the latest spacer line starts, and where it ends
     private var spacerEnd: Int?
     private(set) var links: [RichTextGtkLink] = []
+    private(set) var images: [RichTextGtkImage] = []
 
     /// The ratio of each heading level's size to the body size: macOS's title1, title2, title3, headline and
     /// subheadline text styles against its 13-point body, which the Apple renderer uses.
@@ -92,6 +102,7 @@ final class RichTextGtkBuilder {
         gtk_text_buffer_set_text(buffer, "", 0)
         offset = 0
         links = []
+        images = []
         spacerStart = nil
         spacerEnd = nil
         // Made before any other tag: a tag table gives later tags the higher priority, so the heading and code
@@ -392,14 +403,19 @@ final class RichTextGtkBuilder {
                 var inner = style
                 inner.link = RichTextURLPolicy.allowedLink(url) ?? style.link
                 appendInlines(children, style: inner)
-            case .image(let alt, _):
-                // Images come with their loader; until then the alt text stands in, dimmed.
-                var inner = style
-                inner.secondary = true
-                inner.italic = true
-                run(alt, style: inner, code: false)
+            case .image(let alt, let url):
+                insertImage(alt: alt, url: url)
             }
         }
+    }
+
+    // An image is a child anchor: the view places its widget there (RichTextGtkImageSlot).
+    private func insertImage(alt: String, url: String) {
+        var end = GtkTextIter()
+        gtk_text_buffer_get_end_iter(buffer, &end)
+        let anchor = gtk_text_buffer_create_child_anchor(buffer, &end)!
+        images.append(RichTextGtkImage(anchor: anchor, offset: offset, alt: alt, url: URL(string: url)))
+        offset += 1
     }
 
     private func run(_ text: String, style: InlineStyle, code: Bool) {

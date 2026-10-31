@@ -24,16 +24,6 @@ import AppKit
 import UIKit
 #endif
 
-/// Why an image that is not loaded is not being fetched (see RichTextRemoteImages).
-enum RichTextImageHold: Equatable {
-    /// Not held: loading, failed, or about to load.
-    case none
-    /// A remote image under `.onClick`: fetched when the user clicks (taps) its placeholder.
-    case awaitingClick
-    /// A remote image under `.never`.
-    case off
-}
-
 /// An image attachment that is a placeholder until its bytes load, then shows the (width-capped) image.
 final class RichTextImageAttachment: NSTextAttachment {
     let url: URL?
@@ -124,25 +114,12 @@ final class RichTextImageAttachment: NSTextAttachment {
     /// The placeholder's text: the alt text while loading or after a failure; for a held remote image, the alt
     /// text over a second line naming the image's host, so the user sees where a click would send a request.
     static func placeholderLabel(alt: String, url: URL?, failed: Bool, hold: RichTextImageHold) -> String {
-        // The host as written, percent escapes kept: a decoded host could show an escaped "/" or line break
-        // and pass one domain off as another.
-        let host = url?.host(percentEncoded: true) ?? "the web"
-        switch hold {
-        case .awaitingClick:
-            #if canImport(AppKit)
-            let action = "Click"
-            #else
-            let action = "Tap"
-            #endif
-            return "\(alt.isEmpty ? "Image" : alt)\n\(action) to load from \(host)"
-        case .off:
-            return "\(alt.isEmpty ? "Image" : alt)\nNot loaded from \(host): remote images are off"
-        case .none:
-            if failed {
-                return alt.isEmpty ? "image unavailable" : "\(alt) (unavailable)"
-            }
-            return alt.isEmpty ? "loading image..." : alt
-        }
+        #if canImport(AppKit)
+        let action = "Click"
+        #else
+        let action = "Tap"
+        #endif
+        return RichTextImagePlaceholder.label(alt: alt, url: url, failed: failed, hold: hold, action: action)
     }
 
     // A light rounded box with the label, one paragraph per line, each truncated rather than wrapped.

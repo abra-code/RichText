@@ -44,7 +44,7 @@ final class RichTextGtkBuilderTests: XCTestCase {
         var start = GtkTextIter()
         var end = GtkTextIter()
         gtk_text_buffer_get_bounds(buffer, &start, &end)
-        let text = gtk_text_buffer_get_text(buffer, &start, &end, 1)!
+        let text = gtk_text_buffer_get_slice(buffer, &start, &end, 1)!   // a slice keeps U+FFFC for anchors
         defer {
             g_free(text)
         }
@@ -228,6 +228,19 @@ final class RichTextGtkBuilderTests: XCTestCase {
         let body = tagProperty("size-points", at: offset(of: "body", in: text)) { g_value_get_double($0) }
         XCTAssertEqual(body, 20)
         XCTAssertEqual(heading ?? 0, 20 * 22.0 / 13, accuracy: 0.01)
+    }
+
+    // MARK: - Images
+
+    // An image is one character (an anchor for its widget), recorded with its alt text and URL.
+    func testImagesBecomeAnchors() {
+        let text = build("See ![a cat](https://x.test/cat.png) here")
+        XCTAssertEqual(text, "See \u{FFFC} here")
+        let images = lastBuilder?.images ?? []
+        XCTAssertEqual(images.count, 1)
+        XCTAssertEqual(images.first?.offset, 4)
+        XCTAssertEqual(images.first?.alt, "a cat")
+        XCTAssertEqual(images.first?.url, URL(string: "https://x.test/cat.png"))
     }
 
     // MARK: - Links and colors

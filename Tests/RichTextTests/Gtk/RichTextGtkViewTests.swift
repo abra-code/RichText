@@ -93,6 +93,91 @@ final class RichTextGtkViewTests: XCTestCase {
         }
     }
 
+    // MARK: - Images
+
+    func testDataImageLoadsAtItsSizeAndIsCachedForTheNextView() throws {
+        let markdown = "![dot](\(try pngDataURL(width: 40, height: 20)))"
+        let view = RichTextGtkView(markdown: markdown)
+        let slot = try XCTUnwrap(view.imageSlots.first)
+        pump(until: { slot.loaded != nil })
+        XCTAssertEqual(slot.loaded?.pixelWidth, 40)
+        XCTAssertEqual(slot.loaded?.pixelHeight, 20)
+        // A second view of the same document shows it at once, from the cache.
+        let again = RichTextGtkView(markdown: markdown)
+        XCTAssertNotNil(again.imageSlots.first?.loaded)
+    }
+
+    func testRemoteImagesFollowThePolicy() throws {
+        let view = RichTextGtkView(markdown: "![chart](https://charts.example/c.png)", remoteImages: .never)
+        let slot = try XCTUnwrap(view.imageSlots.first)
+        XCTAssertEqual(slot.hold, .off)
+        XCTAssertEqual(slot.placeholderText, "chart\nNot loaded from charts.example: remote images are off")
+        view.remoteImages = .onClick
+        XCTAssertEqual(slot.hold, .awaitingClick)
+        XCTAssertEqual(slot.placeholderText, "chart\nClick to load from charts.example")
+        XCTAssertNil(slot.loaded)
+    }
+
+    // A policy change while an image loads must not start a second load and show it twice (a GTK critical).
+    func testPolicyChangeDuringALoadShowsTheImageOnce() throws {
+        let view = RichTextGtkView(markdown: "![dot](\(try pngDataURL(width: 12, height: 12)))")
+        let slot = try XCTUnwrap(view.imageSlots.first)
+        view.remoteImages = .onClick
+        view.remoteImages = .automatic
+        pump(until: { slot.loaded != nil })
+        pump(milliseconds: 200)
+        XCTAssertEqual(slot.loaded?.pixelWidth, 12)
+    }
+
+    // A click approves an image under .onClick only: after its fetch fails, .never holds it again instead of
+    // fetching it a second time. (Port 1 on the loopback address refuses at once, so nothing leaves the host.)
+    func testClickApprovalDoesNotOutliveNever() throws {
+        let view = RichTextGtkView(markdown: "![chart](https://127.0.0.1:1/c.png)", remoteImages: .onClick)
+        let slot = try XCTUnwrap(view.imageSlots.first)
+        XCTAssertEqual(slot.hold, .awaitingClick)
+        slot.placeholderClicked()
+        XCTAssertEqual(slot.hold, .none)
+        pump(until: { slot.failed })
+        XCTAssertTrue(slot.failed)
+        view.remoteImages = .never
+        XCTAssertEqual(slot.hold, .off)
+        XCTAssertEqual(slot.placeholderText, "chart\nNot loaded from 127.0.0.1: remote images are off")
+    }
+
+    func testFileImageIsNeverRead() throws {
+        let view = RichTextGtkView(markdown: "![secret](file:///etc/hostname)")
+        let slot = try XCTUnwrap(view.imageSlots.first)
+        XCTAssertTrue(slot.failed)
+        XCTAssertEqual(slot.placeholderText, "secret (unavailable)")
+        pump(milliseconds: 100)
+        XCTAssertNil(slot.loaded)
+    }
+
+    private func pump(until done: () -> Bool) {
+        let end = g_get_monotonic_time() + 5_000_000
+        while !done(), g_get_monotonic_time() < end {
+            if g_main_context_iteration(nil, 0) == 0 {
+                usleep(1000)
+            }
+        }
+    }
+
+    private func pngDataURL(width: Int, height: Int) throws -> String {
+        let pixbuf = try XCTUnwrap(gdk_pixbuf_new(GDK_COLORSPACE_RGB, 1, 8, Int32(width), Int32(height)))
+        defer {
+            g_object_unref(UnsafeMutableRawPointer(pixbuf))
+        }
+        gdk_pixbuf_fill(pixbuf, 0x3366CCFF)
+        var buffer: UnsafeMutablePointer<gchar>?
+        var size: gsize = 0
+        _ = gdk_pixbuf_save_to_bufferv(pixbuf, &buffer, &size, "png", nil, nil, nil)
+        let start = try XCTUnwrap(buffer)
+        defer {
+            g_free(start)
+        }
+        return "data:image/png;base64," + Data(bytes: start, count: Int(size)).base64EncodedString()
+    }
+
     // The widget lives while the view does, and the view can go before the widget's window does.
     func testWidgetOutlivesNothingItShouldNot() {
         var view: RichTextGtkView? = RichTextGtkView(markdown: "x")
