@@ -98,3 +98,33 @@ enum RichTextGtkSignals {
         connect(object, signal, unsafeBitCast(plainTrampoline, to: GCallback.self), run)
     }
 }
+
+// A shortcut's callback action: (widget, arguments, user data) -> handled. The box is released by the action's
+// destroy notification.
+private let shortcutTrampoline: @convention(c) (UnsafeMutablePointer<GtkWidget>?, OpaquePointer?, gpointer?) -> gboolean = {
+    _, _, data in
+    guard let data else {
+        return 0
+    }
+    let handler: SignalBox<RichTextGtkRun> = box(data)
+    MainActor.assumeIsolated { handler.run() }
+    return 1
+}
+
+private let releaseShortcutBox: @convention(c) (gpointer?) -> Void = { data in
+    guard let data else {
+        return
+    }
+    Unmanaged<AnyObject>.fromOpaque(data).release()
+}
+
+extension RichTextGtkSignals {
+    /// Adds a keyboard shortcut (`trigger` in GTK's syntax, "<Control>f") to `controller`, a
+    /// GtkShortcutController, that runs `run` and stops the key there.
+    static func addShortcut(to controller: OpaquePointer, _ trigger: String, _ run: @escaping RichTextGtkRun) {
+        let data = Unmanaged.passRetained(SignalBox(run)).toOpaque()
+        let action = gtk_callback_action_new(shortcutTrampoline, data, releaseShortcutBox)
+        let shortcut = gtk_shortcut_new(gtk_shortcut_trigger_parse_string(trigger), action)
+        gtk_shortcut_controller_add_shortcut(controller, shortcut)
+    }
+}

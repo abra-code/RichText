@@ -62,6 +62,8 @@ public final class RichTextGtkView {
     private var settingsHandlers: [gulong] = []
     private(set) var links: [RichTextGtkLink] = []
     private(set) var imageSlots: [RichTextGtkImageSlot] = []
+    /// The find controller bound to this view (RichTextGtkFindController.bind(view:)), told when the text changes.
+    weak var findController: RichTextGtkFindController?
 
     private var widgetPointer: UnsafeMutablePointer<GtkWidget> {
         UnsafeMutableRawPointer(textView).assumingMemoryBound(to: GtkWidget.self)
@@ -128,12 +130,72 @@ public final class RichTextGtkView {
         for slot in imageSlots {
             slot.start(policy: remoteImages)
         }
+        findController?.textChanged()
     }
 
     private func currentPalette() -> RichTextGtkPalette {
         var foreground = GdkRGBA()
         gtk_widget_get_color(widgetPointer, &foreground)
         return RichTextGtkPalette(foreground: foreground)
+    }
+
+    // MARK: - Find
+
+    /// The text as shown, with U+FFFC where an image is: the text a find controller searches, in the same
+    /// character offsets as the buffer.
+    var text: String {
+        let buffer = gtk_text_view_get_buffer(textView)!
+        var start = GtkTextIter()
+        var end = GtkTextIter()
+        gtk_text_buffer_get_bounds(buffer, &start, &end)
+        guard let slice = gtk_text_buffer_get_slice(buffer, &start, &end, 1) else {
+            return ""
+        }
+        defer {
+            g_free(slice)
+        }
+        return String(cString: slice)
+    }
+
+    // Paints every match, the current one in its own color, and scrolls the current one into view. The tags are
+    // made after the document's, so they draw over code and header backgrounds.
+    func paintFindHighlights(_ ranges: [Range<Int>], current: Int?) {
+        let buffer = gtk_text_view_get_buffer(textView)!
+        let match = findTag(in: buffer, name: "richtext-find-match",
+                            color: GdkRGBA(red: 1, green: 0.85, blue: 0, alpha: 0.35))
+        let currentTag = findTag(in: buffer, name: "richtext-find-current",
+                                 color: GdkRGBA(red: 1, green: 0.6, blue: 0, alpha: 0.55))
+        var start = GtkTextIter()
+        var end = GtkTextIter()
+        gtk_text_buffer_get_bounds(buffer, &start, &end)
+        gtk_text_buffer_remove_tag(buffer, match, &start, &end)
+        gtk_text_buffer_remove_tag(buffer, currentTag, &start, &end)
+        for (index, range) in ranges.enumerated() {
+            gtk_text_buffer_get_iter_at_offset(buffer, &start, Int32(range.lowerBound))
+            gtk_text_buffer_get_iter_at_offset(buffer, &end, Int32(range.upperBound))
+            gtk_text_buffer_apply_tag(buffer, index == current ? currentTag : match, &start, &end)
+            if index == current {
+                // Through a mark: scrolling to an iter uses line heights not yet computed for a new buffer.
+                let mark = gtk_text_buffer_get_mark(buffer, "richtext-find-current")
+                    ?? gtk_text_buffer_create_mark(buffer, "richtext-find-current", &start, 1)!
+                gtk_text_buffer_move_mark(buffer, mark, &start)
+                gtk_text_view_scroll_to_mark(textView, mark, 0.1, 0, 0, 0)
+            }
+        }
+    }
+
+    // The buffer's find tag by name, made on first use (each rebuild makes a new buffer).
+    private func findTag(in buffer: UnsafeMutablePointer<GtkTextBuffer>, name: String, color: GdkRGBA)
+        -> UnsafeMutablePointer<GtkTextTag> {
+        let table = gtk_text_buffer_get_tag_table(buffer)!
+        if let existing = gtk_text_tag_table_lookup(table, name) {
+            return existing
+        }
+        let tag = gtk_text_tag_new(name)!
+        RichTextGtkBuilder.set(tag, "background-rgba", .rgba(color))
+        gtk_text_tag_table_add(table, tag)
+        g_object_unref(UnsafeMutableRawPointer(tag))
+        return tag
     }
 
     // MARK: - Links
