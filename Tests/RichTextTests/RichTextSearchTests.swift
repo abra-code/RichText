@@ -7,10 +7,50 @@
 import XCTest
 @testable import RichText
 
+#if os(Linux)
+// The expectations are UTF-16 ranges, as the Apple engine reports them; the Linux engine reports characters
+// (Unicode scalars, GtkTextBuffer offsets), converted here so both engines meet the same expectations.
+struct NSRange: Equatable {
+    var location: Int
+    var length: Int
+}
+
+private func utf16Range(_ range: Range<Int>, in text: String) -> NSRange {
+    let scalars = Array(text.unicodeScalars)
+    let before = scalars[..<range.lowerBound].reduce(0) { $0 + UTF16.width($1) }
+    let inside = scalars[range].reduce(0) { $0 + UTF16.width($1) }
+    return NSRange(location: before, length: inside)
+}
+#endif
+
 final class RichTextSearchTests: XCTestCase {
 
     private func ranges(_ text: String, _ query: String, _ options: RichTextSearchOptions = .default) -> [NSRange] {
-        RichTextSearch.matches(in: text, query: query, options: options).map(\.range)
+        #if os(Linux)
+        return RichTextSearch.matches(in: text, query: query, options: options).map { utf16Range($0.range, in: text) }
+        #else
+        return RichTextSearch.matches(in: text, query: query, options: options).map(\.range)
+        #endif
+    }
+
+    // The text of a match inside its snippet, and that range in UTF-16.
+    private func inSnippet(_ match: RichTextMatch) -> String {
+        #if os(Linux)
+        return String(String.UnicodeScalarView(Array(match.snippet.unicodeScalars)[match.rangeInSnippet]))
+        #else
+        return (match.snippet as NSString).substring(with: match.rangeInSnippet)
+        #endif
+    }
+
+    private func snippetRange(_ match: RichTextMatch?) -> NSRange? {
+        guard let match else {
+            return nil
+        }
+        #if os(Linux)
+        return utf16Range(match.rangeInSnippet, in: match.snippet)
+        #else
+        return match.rangeInSnippet
+        #endif
     }
 
     // MARK: - Matching rules
@@ -62,6 +102,16 @@ final class RichTextSearchTests: XCTestCase {
         let text = "\u{1F600} smile \u{1F600}"
         XCTAssertEqual(ranges(text, "smile"), [NSRange(location: 3, length: 5)])
         XCTAssertEqual(ranges(text, "\u{1F600}").count, 2)
+    }
+
+    func testDiacriticSensitiveSearchIsCanonical() {
+        let sensitive = RichTextSearchOptions(diacriticSensitive: true)
+        // Precomposed and decomposed accents are the same text, and a bare letter is not the base of an accented one.
+        XCTAssertEqual(ranges("cafe\u{301} caf\u{e9}", "caf\u{e9}", sensitive),
+                       [NSRange(location: 0, length: 5), NSRange(location: 6, length: 4)])
+        XCTAssertEqual(ranges("cafe\u{301}", "cafe", sensitive), [])
+        // A zero-width space alone is a blank query.
+        XCTAssertEqual(ranges("x\u{200B}", "\u{200B}"), [])
     }
 
     // MARK: - Regular expressions
@@ -119,6 +169,8 @@ final class RichTextSearchTests: XCTestCase {
         XCTAssertTrue(RichTextSearch.isValidQuery("\u{301}?", options: RichTextSearchOptions(diacriticSensitive: true, regularExpression: true)))
         // A surrogate pair in the text keeps the map exact past it.
         XCTAssertEqual(ranges("\u{1F600} caf\u{e9}", "caf.", regex), [NSRange(location: 3, length: 4)])
+        // Folding keeps a Hangul syllable one character, so `.` matches all of it.
+        XCTAssertEqual(ranges("\u{D55C}\u{AD6D}", "^..$", regex), [NSRange(location: 0, length: 2)])
     }
 
     func testInvalidRegularExpressionMatchesNothingAndSaysSo() {
@@ -126,6 +178,7 @@ final class RichTextSearchTests: XCTestCase {
         XCTAssertFalse(RichTextSearch.isValidQuery("(", options: regex))
         XCTAssertTrue(RichTextSearch.isValidQuery("(", options: .default), "a literal parenthesis is a fine query")
         XCTAssertTrue(RichTextSearch.isValidQuery("(a|b)", options: regex))
+        XCTAssertFalse(RichTextSearch.isValidQuery("", options: regex), "an empty pattern does not compile")
         // A literal search still finds the parenthesis.
         XCTAssertEqual(ranges("(anything", "("), [NSRange(location: 0, length: 1)])
     }
@@ -136,19 +189,19 @@ final class RichTextSearchTests: XCTestCase {
         let text = "first line\nthe   quick brown   fox\nthird line"
         let match = RichTextSearch.matches(in: text, query: "brown").first
         XCTAssertEqual(match?.snippet, "the quick brown fox")
-        XCTAssertEqual(match?.rangeInSnippet, NSRange(location: 10, length: 5))
-        XCTAssertEqual((match!.snippet as NSString).substring(with: match!.rangeInSnippet), "brown")
+        XCTAssertEqual(snippetRange(match), NSRange(location: 10, length: 5))
+        XCTAssertEqual(inSnippet(match!), "brown")
     }
 
     func testSnippetRangeSurvivesLeadingCutAndCollapsedRuns() {
         let text = String(repeating: "y", count: 60) + "   a   needle   b"
         let match = RichTextSearch.matches(in: text, query: "needle", options: RichTextSearchOptions(snippetContext: 10)).first!
         XCTAssertEqual(match.snippet, "...yyy a needle b")
-        XCTAssertEqual((match.snippet as NSString).substring(with: match.rangeInSnippet), "needle")
+        XCTAssertEqual(inSnippet(match), "needle")
         // A match containing collapsed whitespace keeps its collapsed form inside the snippet.
         let spaced = RichTextSearch.matches(in: "the   quick   fox", query: "quick   fox").first!
         XCTAssertEqual(spaced.snippet, "the quick fox")
-        XCTAssertEqual((spaced.snippet as NSString).substring(with: spaced.rangeInSnippet), "quick fox")
+        XCTAssertEqual(inSnippet(spaced), "quick fox")
     }
 
     func testSnippetTrimsLongLinesWithEllipses() {
@@ -160,7 +213,7 @@ final class RichTextSearchTests: XCTestCase {
         XCTAssertTrue(match!.snippet.hasSuffix("..."), match!.snippet)
         XCTAssertTrue(match!.snippet.contains("needle"))
         XCTAssertLessThan(match!.snippet.count, 2 * RichTextSearchOptions.default.snippetContext + 20)
-        XCTAssertEqual((match!.snippet as NSString).substring(with: match!.rangeInSnippet), "needle")
+        XCTAssertEqual(inSnippet(match!), "needle")
     }
 
     func testSnippetDropsAttachmentPlaceholders() {
@@ -169,8 +222,9 @@ final class RichTextSearchTests: XCTestCase {
         XCTAssertEqual(match?.snippet, "see the chart")
     }
 
-    // MARK: - Rendered documents
+    // MARK: - Rendered documents (Apple platforms; on Linux the rendered text is the GTK view's)
 
+    #if !os(Linux)
     func testMatchAcrossInlineRuns() {
         // "un**believ**able": the rendered string is one word, so a query spanning the bold run matches.
         let document = RichTextDocument(markdown: "un**believ**able")
@@ -217,6 +271,7 @@ final class RichTextSearchTests: XCTestCase {
         // Plain text for an index: the alt text IS what a reader gets from the image.
         XCTAssertTrue(RichTextPlainText.text(for: document).contains("a napping cat"))
     }
+    #endif
 
     // MARK: - Plain text
 
