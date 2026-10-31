@@ -1,6 +1,6 @@
 # RichText
 
-Cross-platform (iOS / iPadOS / macOS / visionOS) component that renders a whole rich
+Cross-platform (iOS / iPadOS / macOS / visionOS, and GTK 4 on Linux) component that renders a whole rich
 document - headings, paragraphs, code blocks, block quotes, lists, GFM tables, inline styling, links -
 into **one native text view**, so the entire document is **selectable and copyable as a single unit**.
 Copy is **table-aware** (RTF / HTML / Markdown) so content round-trips into TextEdit / Notes / Word even
@@ -48,6 +48,17 @@ Three layers, each usable without the one above it:
 A chat transcript takes layers 1 and 2 only: it runs the engine over every message, keeps one cross-message cursor of its own, and hands each message just its ranges.
 
 The Android port has the same three layers (`RichTextSearch` / `RichTextPlainText`, `RichText(highlights = ..., onCurrentMatchBounds = ...)`, `RichTextFindController` / `RichTextFindBar`). Its rendered text is assembled from the per-block texts in draw order (`RichTextRenderedText`), one segment per drawn `Text`, and the bar is opened by a host affordance rather than Cmd-F.
+
+## Linux
+
+On Linux the same `RichText` module builds over GTK 4 (`gtk4`, through pkg-config) and FoundationEssentials, with AsyncImageCache 0.2.0 or later for images. The oldest versions supported are GNOME 48's: GTK 4.18 and GLib 2.84.
+
+- **`RichTextGtkView`** shows a document in one read-only GtkTextView, selectable and copyable as a unit: headings, inline styles, code blocks colored by the same syntax highlighter, quotes, lists, rules, tab-stop tables, links that open on a click, and images loading through AsyncImageCache under `remoteImages`. Colors follow the GTK style, light and dark; a libadwaita host calls `refreshColors()` when its style changes. Pad its sides with the widget's margins (the document's indents replace the text view's left and right margins); its top and bottom margins are free to use.
+- **Find:** `RichTextSearch` on Linux has the same options, over GLib (case folding, normalization, and GRegex, which is PCRE2, for regular expressions), with ranges in Unicode scalars, the GtkTextBuffer's character offsets. `RichTextGtkFindController` and `RichTextGtkFindBar` (a GtkSearchBar the host places above its scrolled window, with Ctrl+F and Ctrl+G) mirror the Apple controller and bar.
+- **Copy as rich text:** `RichTextGtkClipboard.write(_:)` puts HTML (loaded images embedded) and Markdown on the clipboard. There is no RTF on Linux; GTK programs take HTML.
+- Not on Linux yet: the quote bar and the table grid, wrapping table cells, and rounded code cards.
+
+`Demo/Linux` is a small GTK program with a sample document, the shared Markdown fixtures, the find bar, the remote-image policy and copy as rich text: `cd Demo/Linux && swift run RichTextDemo`.
 
 ## How it works
 
@@ -123,4 +134,5 @@ then asserts *"text container must already have a layout manager."* `RichText` k
   manager, and the SwiftUI `RichText`.
 - `Sources/RichText/Serialization/` - RTF / HTML / Markdown writers + the pasteboard helper.
 - `Tests/RichTextTests/` - parser + serializer tests.
-- `Demo/` - a multiplatform demo app (xcodegen).
+- `Sources/RichText/Gtk/` - the Linux renderer, find, clipboard and the Linux find engine.
+- `Demo/` - a multiplatform demo app (xcodegen); `Demo/Linux` is the GTK demo (a SwiftPM package).

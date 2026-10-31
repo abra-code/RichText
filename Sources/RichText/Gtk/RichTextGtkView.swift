@@ -3,6 +3,9 @@
 // The Linux view: a whole document in ONE read-only GtkTextView, so it is selectable and copyable as a single
 // unit, as the Apple RichText view is. A GTK program places `widget` in its widget tree; the view keeps the
 // widget alive (one reference of its own) as long as the object lives.
+// Pad its sides with the widget's margins (gtk_widget_set_margin_start and _end): the text view's left and right
+// margins are the defaults its document's paragraphs replace with their indents. Its top and bottom margins
+// (gtk_text_view_set_top_margin, _bottom_margin) are free to use and scroll with the text.
 //
 // Links open on a click (not on a drag that selects text) through GtkUriLauncher, the system's handler for the
 // URL, as the Apple text views open theirs; the pointer is a hand over a link. Images load through

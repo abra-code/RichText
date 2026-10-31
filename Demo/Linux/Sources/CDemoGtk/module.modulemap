@@ -1,0 +1,4 @@
+module CDemoGtk [system] {
+    header "CDemoGtk.h"
+    export *
+}
