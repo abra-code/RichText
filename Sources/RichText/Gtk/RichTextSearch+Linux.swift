@@ -278,7 +278,7 @@ public enum RichTextSearch {
                 var info: OpaquePointer?
                 var error: UnsafeMutablePointer<GError>?
                 let found = g_regex_match_full(regex.pointer, text, gssize(bytes), gint(byteStarts[cursor]),
-                                               GRegexMatchFlags(0), &info, &error)
+                                               GRegexMatchFlags(rawValue: 0), &info, &error)
                 if let error {
                     g_error_free(error)
                 }
@@ -348,21 +348,21 @@ public enum RichTextSearch {
                 // G_REGEX_OPTIMIZE compiles the pattern to machine code (PCRE2's JIT). Without it every match
                 // call re-validates the UTF-8 from the cursor to the end of the text, so a search is quadratic
                 // in the text (about 1 s for 40,000 matches in 200 KB, against 11 ms with it).
-                var flags = G_REGEX_MULTILINE.rawValue | G_REGEX_OPTIMIZE.rawValue
+                var flags = RICHTEXT_G_REGEX_MULTILINE | RICHTEXT_G_REGEX_OPTIMIZE
                 if !options.caseSensitive {
-                    flags |= G_REGEX_CASELESS.rawValue
+                    flags |= RICHTEXT_G_REGEX_CASELESS
                 }
                 var error: UnsafeMutablePointer<GError>?
                 // An empty pattern (or one of marks only, folded away) is invalid, as NSRegularExpression has it.
                 let made = searched.isEmpty ? nil
-                    : g_regex_new(searched, GRegexCompileFlags(rawValue: flags), GRegexMatchFlags(0), &error)
+                    : g_regex_new(searched, GRegexCompileFlags(rawValue: flags), GRegexMatchFlags(rawValue: 0), &error)
                 if let error {
                     g_error_free(error)
                 }
                 if let made {
                     // GLib compiles the machine code on the first match, writing to the shared GRegex: do it here,
                     // under the lock, so two searches starting at once never race on it (later matches only read).
-                    _ = g_regex_match(made, "", GRegexMatchFlags(0), nil)
+                    _ = g_regex_match(made, "", GRegexMatchFlags(rawValue: 0), nil)
                 }
                 let compiled = made.map { CompiledRegex(adopting: $0) }
                 entry = Entry(pattern: pattern, caseSensitive: options.caseSensitive,

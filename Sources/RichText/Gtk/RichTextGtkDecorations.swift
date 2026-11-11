@@ -65,7 +65,7 @@ enum RichTextGtkDecoratedTextView {
             suffix += 1
             name = "RichTextGtkTextView\(suffix)"
         }
-        return g_type_register_static(gtk_text_view_get_type(), name, &info, GTypeFlags(0))
+        return g_type_register_static(gtk_text_view_get_type(), name, &info, GTypeFlags(rawValue: 0))
     }()
 
     private static let ownerKey = "richtext-decoration-owner"

@@ -12,4 +12,12 @@
 
 #include <gtk/gtk.h>
 
+// GLib 2.88 declares its flags types with G_GNUC_FLAG_ENUM, and Swift then imports them as option sets whose
+// members lose their C names (G_REGEX_MULTILINE is not found). These copies are plain numbers under every GLib
+// version: Swift makes a flags value from them with init(rawValue:), and writes no flags as init(rawValue: 0),
+// never Type(0) or a C name.
+static const guint RICHTEXT_G_REGEX_CASELESS = G_REGEX_CASELESS;
+static const guint RICHTEXT_G_REGEX_MULTILINE = G_REGEX_MULTILINE;
+static const guint RICHTEXT_G_REGEX_OPTIMIZE = G_REGEX_OPTIMIZE;
+
 #endif

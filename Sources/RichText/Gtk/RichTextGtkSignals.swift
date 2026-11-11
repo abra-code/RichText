@@ -32,7 +32,7 @@ private func box<Run>(_ data: gpointer) -> SignalBox<Run> {
 @discardableResult
 private func connect<Run>(_ instance: UnsafeMutableRawPointer, _ signal: String, _ trampoline: GCallback, _ run: Run) -> gulong {
     let data = Unmanaged.passRetained(SignalBox(run)).toOpaque()
-    let id = g_signal_connect_data(instance, signal, trampoline, data, releaseBox, GConnectFlags(0))
+    let id = g_signal_connect_data(instance, signal, trampoline, data, releaseBox, GConnectFlags(rawValue: 0))
     if id == 0 {
         Unmanaged<SignalBox<Run>>.fromOpaque(data).release()
     }
