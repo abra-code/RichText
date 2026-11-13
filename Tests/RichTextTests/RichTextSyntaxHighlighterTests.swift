@@ -27,6 +27,32 @@ final class RichTextSyntaxHighlighterTests: XCTestCase {
         XCTAssertTrue(found.contains { $0.type == .string && text(code, $0) == "\"hello\"" })
     }
 
+    func testABlockWithNoLanguageIsNotHighlighted() {
+        // A commit message in a fenced block: no string from one apostrophe to the next, no comment at "#"
+        let prose = "Linux: applets join the desktop's app list, with their icon\n\nso GNOME's Apps lists it # and 42"
+        XCTAssertTrue(tokens(prose, nil).isEmpty)
+        XCTAssertTrue(tokens(prose, "").isEmpty)
+        for plain in ["text", "txt", "plain", "PlainText", " text "] {
+            XCTAssertTrue(tokens("let x = 'a'", plain).isEmpty, plain)
+        }
+    }
+
+    func testAnApostropheInAWordStartsNoStringInAnUnknownLanguage() {
+        let code = "the desktop's list, GNOME's apps: 'quoted' and x='y'"
+        let strings = tokens(code, "unknownlang").filter { $0.type == .string }.map { text(code, $0) }
+        XCTAssertEqual(strings, ["'quoted'", "'y'"])
+        // A letter with a combining mark, a letter outside the BMP, a superscript digit, a keycap: apostrophes too;
+        // after an emoji a "'" opens a string (the Kotlin port reads UTF-16 and must agree)
+        let unicode = "cafe\u{301}'s \u{1D49C}'s x\u{B2}'s 1\u{FE0F}\u{20E3}'s \u{1F600}'y'"
+        XCTAssertEqual(tokens(unicode, "unknownlang").filter { $0.type == .string }.map { text(unicode, $0) }, ["'y'"])
+        // A real language keeps its rules: Python's f'...' is a string after a letter
+        let python = "s = f'{name}'"
+        XCTAssertEqual(tokens(python, "python").filter { $0.type == .string }.map { text(python, $0) }, ["'{name}'"])
+        // and in shell an apostrophe after a letter still opens a string
+        let shell = "echo it's"
+        XCTAssertEqual(tokens(shell, "sh").filter { $0.type == .string }.map { text(shell, $0) }, ["'s"])
+    }
+
     func testStringEscapeDoesNotEndEarly() {
         let code = "\"a\\\"b\""              // the literal "a\"b"
         let strings = tokens(code, "swift").filter { $0.type == .string }

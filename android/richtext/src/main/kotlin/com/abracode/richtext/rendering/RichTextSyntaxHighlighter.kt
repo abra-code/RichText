@@ -7,9 +7,11 @@ import com.abracode.richtext.trimMarkdownWhitespace
 // comments, strings, numbers, and a per-language keyword set - rather than a full grammar, which is enough to
 // make code read like code without pulling in a parser per language. The fenced block's info string selects a
 // language profile (comment / string styles + keywords); an unknown language falls back to a permissive
-// default. Output is engine-agnostic token runs (offset + length + type); the Compose renderer resolves each
-// type to a theme-adaptive color at draw time (Stage D). A 1:1 port of the tokenizer and profiles in
-// Sources/RichText/Rendering/RichTextSyntaxHighlighter.swift.
+// default, in which an apostrophe inside a word ("it's") starts no string. A block with no language (or a
+// plain-text one: text, txt, plain, plaintext) is not highlighted at all, as GitHub renders it. Output is
+// engine-agnostic token runs (offset + length + type); the Compose renderer resolves each type to a
+// theme-adaptive color at draw time (Stage D). A 1:1 port of the tokenizer and profiles in
+// Sources/RichText/Rendering/RichTextSyntaxTokenizer.swift.
 
 object RichTextSyntaxHighlighter {
 
@@ -22,6 +24,7 @@ object RichTextSyntaxHighlighter {
 
     /** Tokenizes `code` under an explicit profile. */
     fun tokenize(code: String, profile: SyntaxProfile): List<Token> {
+        if (profile.isPlain) return emptyList()
         val scanner = Scanner(code)
         val tokens = mutableListOf<Token>()
 
@@ -57,8 +60,10 @@ object RichTextSyntaxHighlighter {
                 continue
             }
 
-            // String literal (stops at the matching unescaped delimiter, or end of line - streaming-safe).
-            if (c in profile.stringDelimiters) {
+            // String literal (stops at the matching unescaped delimiter, or end of line - streaming-safe). In the
+            // default profile a '\'' right after a letter or digit is an apostrophe ("desktop's"), not a quote.
+            val apostrophe = c == '\'' && profile.apostrophesInWords && scanner.previousIsLetterOrNumber()
+            if (c in profile.stringDelimiters && !apostrophe) {
                 val start = scanner.location
                 scanner.advance()
                 while (true) {
@@ -162,6 +167,27 @@ private class Scanner(private val text: String) {
 
     val isAtEnd: Boolean get() = location >= text.length
 
+    /**
+     * Whether the character before the current one is a letter or a number, as Swift's Character.isLetter ||
+     * isNumber sees it: those test a grapheme cluster's first scalar, so step back over combining marks (an "e"
+     * plus U+0301, a keycap) and read whole code points (a letter outside the BMP is a surrogate pair).
+     */
+    fun previousIsLetterOrNumber(): Boolean {
+        var i = location
+        while (i > 0) {
+            val cp = Character.codePointBefore(text, i)
+            i -= Character.charCount(cp)
+            val type = Character.getType(cp)
+            if (type == Character.NON_SPACING_MARK.toInt() || type == Character.COMBINING_SPACING_MARK.toInt() ||
+                type == Character.ENCLOSING_MARK.toInt()) {
+                continue
+            }
+            return Character.isAlphabetic(cp) || type == Character.DECIMAL_DIGIT_NUMBER.toInt() ||
+                type == Character.LETTER_NUMBER.toInt() || type == Character.OTHER_NUMBER.toInt()
+        }
+        return false
+    }
+
     fun peek(ahead: Int = 0): Char? {
         val position = location + ahead
         return if (position < text.length) text[position] else null
@@ -191,6 +217,10 @@ class SyntaxProfile(
     val blockComment: BlockComment?,
     val stringDelimiters: Set<Char>,
     val keywords: Set<String>,
+    /** The fallback profile reads '\'' after a letter or digit as an apostrophe (a real language's does not). */
+    val apostrophesInWords: Boolean = false,
+    /** No highlighting at all: a block with no language, or a plain-text one. */
+    val isPlain: Boolean = false,
 ) {
     data class BlockComment(val open: String, val close: String)
 
@@ -198,6 +228,7 @@ class SyntaxProfile(
         fun profile(language: String?): SyntaxProfile {
             val key = (language ?: "").lowercase().trimMarkdownWhitespace()
             return when (key) {
+                "", "text", "txt", "plain", "plaintext" -> plain
                 "swift" ->
                     SyntaxProfile(listOf("//"), BlockComment("/*", "*/"), setOf('"'), swiftKeywords)
                 "c", "cpp", "c++", "cxx", "objc", "objective-c", "m", "mm", "h", "hpp" ->
@@ -219,9 +250,12 @@ class SyntaxProfile(
                 "json" ->
                     SyntaxProfile(emptyList(), null, setOf('"'), setOf("true", "false", "null"))
                 else ->
-                    SyntaxProfile(listOf("//", "#"), BlockComment("/*", "*/"), setOf('"', '\'', '`'), defaultKeywords)
+                    SyntaxProfile(listOf("//", "#"), BlockComment("/*", "*/"), setOf('"', '\'', '`'), defaultKeywords,
+                        apostrophesInWords = true)
             }
         }
+
+        val plain = SyntaxProfile(emptyList(), null, emptySet(), emptySet(), isPlain = true)
 
         private val swiftKeywords = setOf(
             "associatedtype", "class", "deinit", "enum", "extension", "func", "import", "init", "inout", "let",

@@ -4,7 +4,9 @@
 // platforms). It is a GENERIC lexer - it recognizes comments, strings, numbers, and a per-language keyword set -
 // rather than a full grammar, which is enough to make code read like code without pulling in a parser per
 // language. The fenced block's info string selects a language profile (comment / string styles + keywords); an
-// unknown language falls back to a permissive default.
+// unknown language falls back to a permissive default, in which an apostrophe inside a word ("it's") starts no
+// string. A block with no language (or a plain-text one: text, txt, plain, plaintext) is not highlighted at all,
+// as GitHub renders it: it is as often prose (a commit message) as code.
 //
 // Platform-independent and Foundation-free: every renderer colors code blocks from the same tokens. Each token
 // carries its range both in UTF-16 units (NSString, TextKit) and in Unicode scalars (GtkTextBuffer's character
@@ -27,6 +29,9 @@ enum RichTextSyntaxHighlighter {
     // MARK: - Lexer
 
     static func tokenize(_ code: String, profile: SyntaxProfile) -> [Token] {
+        if profile.isPlain {
+            return []
+        }
         let scanner = Scanner(code)
         var tokens: [Token] = []
 
@@ -56,8 +61,10 @@ enum RichTextSyntaxHighlighter {
                 continue
             }
 
-            // String literal (stops at the matching unescaped delimiter, or end of line - streaming-safe).
-            if profile.stringDelimiters.contains(c) {
+            // String literal (stops at the matching unescaped delimiter, or end of line - streaming-safe). In the
+            // default profile a "'" right after a letter or digit is an apostrophe ("desktop's"), not a quote.
+            if profile.stringDelimiters.contains(c),
+               !(c == "'" && profile.apostrophesInWords && (scanner.previous.map { $0.isLetter || $0.isNumber } ?? false)) {
                 let start = scanner.position
                 scanner.advance()
                 while let ch = scanner.peek(), ch != c, ch != "\n" {
@@ -156,6 +163,11 @@ private final class Scanner {
         return index >= chars.count
     }
 
+    /// The character before the current one, if any.
+    var previous: Character? {
+        return index > 0 && index <= chars.count ? chars[index - 1] : nil
+    }
+
     func peek(_ ahead: Int = 0) -> Character? {
         let position = index + ahead
         return position < chars.count ? chars[position] : nil
@@ -197,10 +209,19 @@ struct SyntaxProfile {
     var blockComment: (open: String, close: String)?
     var stringDelimiters: Set<Character>
     var keywords: Set<String>
+    /// The fallback profile reads "'" after a letter or digit as an apostrophe, not a string's start (a real
+    /// language's profile does not: a letter before a quote can be a string prefix, as Python's f'...').
+    var apostrophesInWords = false
+    /// No highlighting at all: a block with no language, or a plain-text one.
+    var isPlain = false
+
+    static let plain = SyntaxProfile(lineComments: [], blockComment: nil, stringDelimiters: [], keywords: [], isPlain: true)
 
     static func profile(for language: String?) -> SyntaxProfile {
         let key = trimmingWhitespace((language ?? "").lowercased())
         switch key {
+        case "", "text", "txt", "plain", "plaintext":
+            return plain
         case "swift":
             return SyntaxProfile(lineComments: ["//"], blockComment: ("/*", "*/"), stringDelimiters: ["\""], keywords: swiftKeywords)
         case "c", "cpp", "c++", "cxx", "objc", "objective-c", "m", "mm", "h", "hpp":
@@ -222,7 +243,8 @@ struct SyntaxProfile {
         case "json":
             return SyntaxProfile(lineComments: [], blockComment: nil, stringDelimiters: ["\""], keywords: ["true", "false", "null"])
         default:
-            return SyntaxProfile(lineComments: ["//", "#"], blockComment: ("/*", "*/"), stringDelimiters: ["\"", "'", "`"], keywords: defaultKeywords)
+            return SyntaxProfile(lineComments: ["//", "#"], blockComment: ("/*", "*/"), stringDelimiters: ["\"", "'", "`"], keywords: defaultKeywords,
+                                 apostrophesInWords: true)
         }
     }
 
